@@ -34,10 +34,10 @@ def fetch_song_infos(df):
     batch_size = 30
     batch_refs = []
     for i in tqdm(range(0, len(df), batch_size)):
-        batch_refs.append(fetch_batch_song_infos(df, i, min(len(df), i + batch_size)))
+        batch_refs.append(fetch_batch_song_infos.remote(df, i, min(len(df), i + batch_size)))
 
     # wait for batches to finish
-    # song_infos = ray.get(batch_refs)
+    song_infos = ray.get(batch_refs)
 
     # flatten
     song_infos = sum(song_infos, [])
