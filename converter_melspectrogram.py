@@ -79,6 +79,7 @@ def convert(dataset, batch_id):
 if __name__ == '__main__':
     dataset = pd.read_csv('dataset/dataset.csv')
     start = 0
+    end = len(dataset)
     batch_size = 500
-    for i in range(start, len(dataset), batch_size):
-        convert(dataset[i:min(len(dataset), i + batch_size)], i)
+    for i in range(start, end, batch_size):
+        convert(dataset[i:min(end, i + batch_size)], i)
