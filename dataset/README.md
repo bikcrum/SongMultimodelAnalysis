@@ -3,7 +3,7 @@
 Link: https://drive.google.com/drive/folders/1DTgppYHu2V8naG2FOda0K-nkPCMbpbJM?usp=sharing
 
 #### Notes:
-1. Melspectrogram is converted from audio file in following configuration
+1. Melspectrogram is converted from audio file in following configuration. Note that silence of 0-2 seconds is added to make all audio of same duration. 
 
 Name|Value
 ---|---
