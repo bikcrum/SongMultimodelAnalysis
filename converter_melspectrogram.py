@@ -75,13 +75,10 @@ def convert(dataset, batch_id):
         with open(f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel', 'wb') as w:
             pickle.dump(log_magnitude_mel_spectrograms[i], w)
 
-        # with open(f'dataset/previews/melspectrogram/{row.dzr_sng_id}.mel', 'rb') as r:
-        #     saved_log_magnitude_mel_spectrograms = pickle.load(r)
-        #
-
 
 if __name__ == '__main__':
-    dataset = pd.read_csv('dataset/dataset.csv')[500:]
+    dataset = pd.read_csv('dataset/dataset.csv')
+    start = 0
     batch_size = 500
-    for i in range(0, len(dataset), batch_size):
+    for i in range(start, len(dataset), batch_size):
         convert(dataset[i:min(len(dataset), i + batch_size)], i)

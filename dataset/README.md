@@ -1,5 +1,7 @@
 ### Dataset compiled from Deezer API
 
+Link: https://drive.google.com/drive/folders/1DTgppYHu2V8naG2FOda0K-nkPCMbpbJM?usp=sharing
+
 #### Notes:
 1. Melspectrogram is converted from audio file in following configuration
 
