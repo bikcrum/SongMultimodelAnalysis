@@ -1,19 +1,19 @@
-import logging
-import os
-import pickle
-import time
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
+import pandas as pd
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+import os
+from torch.utils.data import Dataset, DataLoader
+import pickle
+import numpy as np
+import time
+from sklearn.cluster import KMeans
 from scipy import interpolate
 from scipy.spatial import ConvexHull
-from sklearn.cluster import KMeans
-from torch.utils.data import Dataset, DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from torch import Tensor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -72,9 +72,9 @@ def split_data(dataset, shuffle=False, splits=None):
         start, end = num_splits[i], num_splits[i + 1]
         datasets.append(_dataset[start:end])
 
-    datasets.append(_dataset[num_splits[-1]:])
 
-    return datasets[::-1]
+
+    return [_dataset[num_splits[-1]:]] + datasets
 
 
 class DeezerMusicDataset(Dataset):
@@ -90,12 +90,12 @@ class DeezerMusicDataset(Dataset):
         self.transform = transform
 
     def __len__(self):
-        return len(self.yy)
+        return self.yy.shape[0]
 
     def __getitem__(self, idx):
-        x = self.xx[idx]
+        x = Tensor(self.xx[idx])
 
-        if self.transform:
+        if self.transform is not None:
             x = self.transform(x)
 
         y = self.yy[idx]
@@ -127,7 +127,8 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(in_features=5232, out_features=64)
         self.fc2 = nn.Linear(in_features=64, out_features=num_clusters)
 
-    def forward(self, x):
+    def forward(self, _x):
+        x = _x.clone()
         x = x.transpose(1, 2)
         x = self.conv1(x)
         x = self.batchnorm1(x)
@@ -145,25 +146,25 @@ if __name__ == '__main__':
 
     writer = SummaryWriter()
 
-    dataset = pd.read_csv('dataset/dataset.csv')[:100]
+    dataset = pd.read_csv('dataset/dataset.csv')
     create_cluster(num_clusters=num_clusters)
 
-    train_split, val_split, test_split = split_data(dataset, splits=[0.3, 0.2])
-
+    train_split, val_split, test_split = split_data(dataset, splits=[0.3,0.1])
+    print(len(train_split), len(val_split), len(test_split ))
     train_data = DeezerMusicDataset(train_split)
     val_data = DeezerMusicDataset(val_split)
     test_data = DeezerMusicDataset(test_split)
 
     batch_size = 256
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=2)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
     # Build model
-    model = Net(n_mels=train_data.xx.shape[-1], num_clusters=num_clusters)
+    model = Net(n_mels=64, num_clusters=num_clusters)
 
     # Main training loop
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.003)
     criterion = torch.nn.CrossEntropyLoss()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -186,6 +187,7 @@ if __name__ == '__main__':
         train_running_acc = 0
         model.train()
         for j, input in enumerate(train_loader, 0):
+
             x = input[0].to(device)
             y = input[1].type(torch.LongTensor).to(device)
             out = model(x)
@@ -206,7 +208,7 @@ if __name__ == '__main__':
             acc_log.append(correct.item() / len(y))
 
         train_running_loss /= (j + 1e-5)
-        train_running_acc /= len(train_data)
+        train_running_acc /= len(train_split)
 
         # Evaluate on validation
         val_acc = 0
@@ -225,8 +227,8 @@ if __name__ == '__main__':
             val_acc += correct.item()
             val_loss += loss.item()
 
-        val_acc /= len(val_data)
-        val_loss /= (j + 1e-5)
+        val_acc /= len(val_split)
+        val_loss /= (j+1e-5)
 
         # Save models
         if val_acc > max_acc_so_far:
@@ -236,22 +238,22 @@ if __name__ == '__main__':
         val_acc_log.append(val_acc)
         val_loss_log.append(val_loss)
 
-        logging.info(
+        print(
             "[Epoch {:3}]   Loss:  {:8.4}     Train Acc:  {:8.4}%      Val Acc:  {:8.4}%".format(i, train_running_loss,
                                                                                                  train_running_acc * 100,
                                                                                                  val_acc * 100))
 
-        # Write results to tensorboard
-        writer.add_scalar('Accuracy/train', train_running_acc * 100, i)
-        writer.add_scalar('Accuracy/validation', val_acc * 100, i)
-        writer.add_scalar('Loss/train', train_running_loss, i)
-        writer.add_scalar('Loss/validation', val_loss, i)
+    #     # Write results to tensorboard
+    #     writer.add_scalar('Accuracy/train', train_running_acc * 100, i)
+    #     writer.add_scalar('Accuracy/validation', val_acc * 100, i)
+    #     writer.add_scalar('Loss/train', train_running_loss, i)
+    #     writer.add_scalar('Loss/validation', val_loss, i)
 
-        for name, weight in model.named_parameters():
-            writer.add_histogram(name, weight, i)
-            writer.add_histogram(f'{name}.grad', weight.grad, i)
+    #     for name, weight in model.named_parameters():
+    #         writer.add_histogram(name, weight, i)
+    #         writer.add_histogram(f'{name}.grad', weight.grad, i)
 
-    writer.close()
+    # writer.close()
 
     # Plot training and validation curves
     fig, ax1 = plt.subplots(figsize=(16, 9))
