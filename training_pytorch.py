@@ -116,15 +116,19 @@ class Net(nn.Module):
 
         self.conv0 = nn.Sequential(
             nn.Conv1d(n_mels, 32, kernel_size=3),
+            nn.ReLU(),
             nn.MaxPool1d(4))
 
         self.conv1 = nn.Sequential(
             nn.Conv1d(32, 16, kernel_size=3),
+            nn.ReLU(),
             nn.MaxPool1d(4))
 
         self.conv2 = nn.Sequential(
             nn.Conv1d(16, 8, kernel_size=3),
-            nn.MaxPool1d(4))
+            nn.ReLU(),
+            nn.MaxPool1d(4),
+        )
 
         self.classifier = nn.Sequential(
             nn.Linear(in_features=160, out_features=64),
@@ -149,10 +153,10 @@ if __name__ == '__main__':
     dataset = pd.read_csv('dataset/dataset.csv')
     # dataset['valence'] = np.random.randn(len(dataset))
     # dataset['arousal'] = np.random.randn(len(dataset))
-    create_cluster(num_clusters=4)
+    create_cluster(num_clusters=num_clusters)
 
     train_split, val_split, test_split = split_data(dataset, splits=[0.2, 0.1])
-    print(len(train_split), len(val_split), len(test_split))
+
     train_data = DeezerMusicDataset(train_split)
     val_data = DeezerMusicDataset(val_split)
     test_data = DeezerMusicDataset(test_split)
@@ -162,16 +166,25 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
+    mean = train_data.xx.mean(axis=1).mean(axis=0)
+    std = train_data.xx.std(axis=1).std(axis=0)
+
+    # mean = train_data.xx.mean(axis=0)
+    # std = train_data.xx.std(axis=0)
+
+    train_data.xx = (train_data.xx - mean) / std
+    val_data.xx = (val_data.xx - mean) / std
+    test_data.xx = (test_data.xx - mean) / std
+
     # Build model
     model = Net(n_mels=64, num_clusters=num_clusters)
     # model.load_state_dict()
 
     # Main training loop
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.003)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, momentum=0.9)
     criterion = torch.nn.CrossEntropyLoss()
 
-    model.to(device)
+    model = model.to(device)
 
     loss_log = []
     acc_log = []
@@ -241,8 +254,8 @@ if __name__ == '__main__':
 
         print(
             "[Epoch {:3}]   Loss:  {:8.4}  Val Loss:  {:8.4}  Train Acc:  {:8.4}%      Val Acc:  {:8.4}%".format(i,
-                                                                                                                 val_loss,
                                                                                                                  train_running_loss,
+                                                                                                                 val_loss,
                                                                                                                  train_running_acc * 100,
                                                                                                                  val_acc * 100))
 
