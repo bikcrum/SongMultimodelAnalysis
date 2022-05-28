@@ -79,7 +79,7 @@ def convert(dataset, batch_id):
     for i in tq:
         tq.set_description(f'Converting:{batch_id + i}')
         with open(
-                os.path.join(workdir, f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel', 'wb')) as w:
+                os.path.join(workdir, f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel'), 'wb') as w:
             pickle.dump(log_magnitude_mel_spectrograms[i], w)
 
 
