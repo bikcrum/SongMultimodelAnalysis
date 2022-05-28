@@ -13,7 +13,7 @@ workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 def convert_batch_to_wav(dataset, batch_id):
     print(f'Batch:{batch_id}-{batch_id + len(dataset)}')
     for i, row in dataset.iterrows():
-        command = f"ffmpeg -y -i {os.path.join(workdir, f'dataset/previews/mp3/{row.dzr_sng_id}.mp3')} -acodec pcm_u8 -ar 22050 {os.path.join(workdir, f'dataset/previews/wav1/{row.dzr_sng_id}.wav')}"
+        command = f"ffmpeg -y -i {os.path.join(workdir, f'dataset/previews/mp3/{row.dzr_sng_id}.mp3')} -acodec pcm_u8 -ar 22050 {os.path.join(workdir, f'dataset/previews/wav/{row.dzr_sng_id}.wav')}"
         print(command)
         os.system(command)
 
@@ -31,7 +31,7 @@ def convert_to_wav(dataset):
     # ray.get(refs)
 
     # get downloads song ids
-    ids = list(map(lambda file: int(file.split('.')[0]), os.listdir(os.path.join(workdir, 'dataset/previews/wav1'))))
+    ids = list(map(lambda file: int(file.split('.')[0]), os.listdir(os.path.join(workdir, 'dataset/previews/wav'))))
 
     # get remaining song ids
     rids = set(dataset.dzr_sng_id) - set(ids)
