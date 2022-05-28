@@ -8,3 +8,4 @@ tf-checkpoints
 tf-logs
 experiments
 tmp
+*.sh
