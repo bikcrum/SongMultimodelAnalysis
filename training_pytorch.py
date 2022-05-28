@@ -147,8 +147,7 @@ class DeezerMusicDataset1(Dataset):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        with open(os.path.join(workdir, f'dataset/previews/melspectrogram/{self.data[idx]}.mel'), 'rb') as r:
-            x = np.array(pickle.load(r))
+        x = np.load(f'dataset/previews/melspectrogram3/{self.data[idx]}.npy')
 
         x = Tensor(x)
 
@@ -217,9 +216,9 @@ if __name__ == '__main__':
     test_data = DeezerMusicDataset1(test_split, label='cluster')
 
     batch_size = 256
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=2)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=2)
 
     # mean = train_data.xx.mean(axis=1).mean(axis=0)
     # std = train_data.xx.std(axis=1).std(axis=0)

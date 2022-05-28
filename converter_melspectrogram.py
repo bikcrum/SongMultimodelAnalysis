@@ -7,7 +7,6 @@ keras = tf.keras
 import pandas as pd
 import librosa as lr
 import logging
-import pickle
 from tqdm import tqdm
 import sys
 
@@ -78,15 +77,13 @@ def convert(dataset, batch_id):
     tq = tqdm(range(len(dataset)))
     for i in tq:
         tq.set_description(f'Converting:{batch_id + i}')
-        with open(
-                os.path.join(workdir, f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel'), 'wb') as w:
-            pickle.dump(log_magnitude_mel_spectrograms[i], w)
+        np.save(f'dataset/previews/melspectrogram3/{dataset.iloc[i].dzr_sng_id}.npy', log_magnitude_mel_spectrograms[i])
 
 
 if __name__ == '__main__':
     dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
     start = 0
     end = len(dataset)
-    batch_size = 100
+    batch_size = 500
     for i in range(start, end, batch_size):
         convert(dataset[i:min(end, i + batch_size)], i)
