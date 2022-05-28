@@ -14,7 +14,6 @@ def convert_batch_to_wav(dataset, batch_id):
     print(f'Batch:{batch_id}-{batch_id + len(dataset)}')
     for i, row in dataset.iterrows():
         command = f"ffmpeg -y -i {os.path.join(workdir, f'dataset/previews/mp3/{row.dzr_sng_id}.mp3')} -acodec pcm_u8 -ar 22050 {os.path.join(workdir, f'dataset/previews/wav/{row.dzr_sng_id}.wav')}"
-        print(command)
         os.system(command)
 
 
@@ -22,7 +21,7 @@ def convert_to_wav(dataset):
     if len(dataset) == 0:
         return
 
-    batch_size = 100
+    batch_size = 1
     refs = []
     for i in range(0, len(dataset), batch_size):
         refs.append(convert_batch_to_wav.remote(dataset[i:min(len(dataset), i + batch_size)], i))
