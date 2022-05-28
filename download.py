@@ -1,15 +1,18 @@
+import json
 import os
+import shutil
+import sys
 
 import pandas as pd
 import ray
 import requests
-from tqdm import tqdm
-import json
-from bs4 import BeautifulSoup
 import urllib3
-import shutil
+from bs4 import BeautifulSoup
+from tqdm import tqdm
 
 ray.init(ignore_reinit_error=True)
+
+workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 
 
 @ray.remote
@@ -202,7 +205,8 @@ def download_batch_mp3(song_previews, batch_id):
     print(f'Batch:{batch_id}-{batch_id + len(song_previews)}')
     for i, song_preview in song_previews.iterrows():
         http = urllib3.PoolManager()
-        with open(f"deezer_mood_detection_dataset-master/previews/{song_preview.dzr_sng_id}.mp3", 'wb') as out:
+        with open(os.path.join(workdir, f"dataset/previews/mp3/{song_preview.dzr_sng_id}.mp3"),
+                  'wb') as out:
             r = http.request('GET', song_preview.preview, preload_content=False)
             shutil.copyfileobj(r, out)
 
@@ -220,7 +224,7 @@ def download_mp3(song_previews):
     ray.get(refs)
 
     # get downloads song ids
-    ids = list(map(lambda file: int(file.split('.')[0]), os.listdir('deezer_mood_detection_dataset-master/previews')))
+    ids = list(map(lambda file: int(file.split('.')[0]), os.listdir(os.path.join(workdir, 'dataset/previews/mp3'))))
 
     # get remaining song ids
     rids = set(song_previews.dzr_sng_id) - set(ids)
@@ -232,16 +236,16 @@ def download_mp3(song_previews):
 
 
 def main():
-    df = pd.read_csv('deezer_mood_detection_dataset-master/test.csv')
-    fetch_song_infos(df)
+    # df = pd.read_csv('deezer_mood_detection_dataset-master/test.csv')
+    # fetch_song_infos(df)
+    #
+    # with open('deezer_mood_detection_dataset-master/test_song_infos.json') as song_infos:
+    #     download_songs(json.load(song_infos))
+    #
+    # with open('deezer_mood_detection_dataset-master/test_song_previews.json') as song_previews:
+    #     fetch_lyrics(json.load(song_previews))
 
-    with open('deezer_mood_detection_dataset-master/test_song_infos.json') as song_infos:
-        download_songs(json.load(song_infos))
-
-    with open('deezer_mood_detection_dataset-master/test_song_previews.json') as song_previews:
-        fetch_lyrics(json.load(song_previews))
-
-    df = pd.read_csv('deezer_mood_detection_dataset-master/previews.csv')
+    df = pd.read_csv(os.path.join(workdir, 'dataset/previews.csv'))
     download_mp3(df)
 
     print('Finished')
