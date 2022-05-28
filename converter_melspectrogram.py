@@ -22,7 +22,7 @@ workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 def convert(dataset, batch_id):
     logging.info('Reading data from disk')
     signals, _ = zip(
-        *map(lr.load, os.path.join(workdir, 'dataset/previews/wav/' + dataset.dzr_sng_id.astype(str) + '.wav')))
+        *map(lr.load, os.path.join(workdir, 'dataset/previews/wav/') + dataset.dzr_sng_id.astype(str) + '.wav'))
 
     max_sample_size = dataset.sample_size.max()
 
