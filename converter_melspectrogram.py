@@ -1,3 +1,5 @@
+import os.path
+
 import numpy as np
 import tensorflow as tf
 
@@ -7,16 +9,20 @@ import librosa as lr
 import logging
 import pickle
 from tqdm import tqdm
+import sys
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
     level=logging.INFO,
     datefmt='%Y-%m-%d %H:%M:%S')
 
+workdir = sys.argv[1] if len(sys.argv) > 1 else ''
+
 
 def convert(dataset, batch_id):
     logging.info('Reading data from disk')
-    signals, _ = zip(*map(lr.load, 'dataset/previews/wav/' + dataset.dzr_sng_id.astype(str) + '.wav'))
+    signals, _ = zip(
+        *map(lr.load, os.path.join(workdir, 'dataset/previews/wav/' + dataset.dzr_sng_id.astype(str) + '.wav')))
 
     max_sample_size = dataset.sample_size.max()
 
@@ -72,12 +78,13 @@ def convert(dataset, batch_id):
     tq = tqdm(range(len(dataset)))
     for i in tq:
         tq.set_description(f'Converting:{batch_id + i}')
-        with open(f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel', 'wb') as w:
+        with open(
+                os.path.join(workdir, f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.mel', 'wb')) as w:
             pickle.dump(log_magnitude_mel_spectrograms[i], w)
 
 
 if __name__ == '__main__':
-    dataset = pd.read_csv('dataset/dataset.csv')
+    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
     start = 0
     end = len(dataset)
     batch_size = 100
