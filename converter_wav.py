@@ -9,7 +9,7 @@ ray.init(ignore_reinit_error=True)
 workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 
 
-# @ray.remote
+@ray.remote
 def convert_batch_to_wav(dataset, batch_id):
     print(f'Batch:{batch_id}-{batch_id + len(dataset)}')
     for i, row in dataset.iterrows():
@@ -24,10 +24,10 @@ def convert_to_wav(dataset):
     batch_size = 1
     refs = []
     for i in range(0, len(dataset), batch_size):
-        refs.append(convert_batch_to_wav(dataset[i:min(len(dataset), i + batch_size)], i))
+        refs.append(convert_batch_to_wav.remote(dataset[i:min(len(dataset), i + batch_size)], i))
 
     # download batch songs
-    # ray.get(refs)
+    ray.get(refs)
 
     # get downloads song ids
     ids = list(map(lambda file: int(file.split('.')[0]), os.listdir(os.path.join(workdir, 'dataset/previews/wav'))))
