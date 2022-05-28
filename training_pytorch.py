@@ -95,8 +95,17 @@ class DeezerMusicDataset(Dataset):
         self.xx = []
         for song_id in dataset.dzr_sng_id:
             with open(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel'), 'rb') as r:
-                self.xx.append(pickle.load(r))
+                x = np.array(pickle.load(r))
+                self.xx.append(x)
             # self.xx.append(np.load(f'dataset/previews/melspectrogram/{song_id}.mel'))
+
+        assert len(dataset) == len(self.xx), "Some audio couldn't be loaded"
+
+        bad_shape_data = list(filter(lambda x: x[1].shape != self.xx[0].shape, enumerate(self.xx)))
+
+        if len(bad_shape_data) > 0:
+            bad_shape_data_index, _ = zip(*bad_shape_data)
+            raise Exception('Some audio data are corrupted', dataset.iloc[np.array(bad_shape_data_index)].dzr_sng_id)
 
         self.xx = np.array(self.xx)
         self.yy = dataset[['cluster']].squeeze().values
@@ -164,7 +173,7 @@ if __name__ == '__main__':
 
     writer = SummaryWriter()
 
-    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
+    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))[:2000]
     # dataset['valence'] = np.random.randn(len(dataset))
     # dataset['arousal'] = np.random.randn(len(dataset))
     create_cluster(num_clusters=num_clusters)
