@@ -126,6 +126,40 @@ class DeezerMusicDataset(Dataset):
         return x, y
 
 
+class DeezerMusicDataset1(Dataset):
+    def __init__(self, dataset, label, exclude_missing_file=False, transform=None):
+
+        self.data = list(filter(
+            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel'))
+                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel')),
+            dataset.dzr_sng_id))
+
+        if not exclude_missing_file:
+            assert len(self.data) == len(
+                dataset), "Some files are missing. Use exclude_missing_file=True to exclude them in dataset"
+
+        self.data = np.array(self.data)
+        self.labels = dataset[[label]].squeeze().values
+
+        self.transform = transform
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, idx):
+        with open(os.path.join(workdir, f'dataset/previews/melspectrogram/{self.data[idx]}.mel'), 'rb') as r:
+            x = np.array(pickle.load(r))
+
+        x = Tensor(x)
+
+        if self.transform is not None:
+            x = self.transform(x)
+
+        y = self.labels[idx]
+
+        return x, y
+
+
 class Net(nn.Module):
     def __init__(self, n_mels, num_clusters):
         super(Net, self).__init__()
@@ -173,16 +207,14 @@ if __name__ == '__main__':
 
     writer = SummaryWriter()
 
-    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))[:2000]
-    # dataset['valence'] = np.random.randn(len(dataset))
-    # dataset['arousal'] = np.random.randn(len(dataset))
+    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
     create_cluster(num_clusters=num_clusters)
 
     train_split, val_split, test_split = split_data(dataset, splits=[0.2, 0.1])
 
-    train_data = DeezerMusicDataset(train_split)
-    val_data = DeezerMusicDataset(val_split)
-    test_data = DeezerMusicDataset(test_split)
+    train_data = DeezerMusicDataset1(train_split, label='cluster')
+    val_data = DeezerMusicDataset1(val_split, label='cluster')
+    test_data = DeezerMusicDataset1(test_split, label='cluster')
 
     batch_size = 256
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
