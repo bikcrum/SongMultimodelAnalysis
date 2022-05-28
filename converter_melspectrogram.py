@@ -80,6 +80,6 @@ if __name__ == '__main__':
     dataset = pd.read_csv('dataset/dataset.csv')
     start = 0
     end = len(dataset)
-    batch_size = 500
+    batch_size = 100
     for i in range(start, end, batch_size):
         convert(dataset[i:min(end, i + batch_size)], i)
