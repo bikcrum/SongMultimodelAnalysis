@@ -1,8 +1,7 @@
 .idea
 venv
 .ipynb_checkpoints
-dataset/*
-!dataset/README.md
+dataset
 runs
 saved_models
 tf-checkpoints
