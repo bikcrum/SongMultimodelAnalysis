@@ -1,5 +1,6 @@
 import os
 import pickle
+import sys
 import time
 
 import matplotlib.pyplot as plt
@@ -22,6 +23,8 @@ else:
     device = "cpu"
 
 print(f"Using device: {device}")
+
+workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 
 
 def create_cluster(num_clusters=None):
@@ -87,7 +90,7 @@ class DeezerMusicDataset(Dataset):
     def __init__(self, dataset, transform=None):
         self.xx = []
         for song_id in dataset.dzr_sng_id:
-            with open(f'dataset/previews/melspectrogram/{song_id}.mel', 'rb') as r:
+            with open(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel'), 'rb') as r:
                 self.xx.append(pickle.load(r))
             # self.xx.append(np.load(f'dataset/previews/melspectrogram/{song_id}.mel'))
 
@@ -130,6 +133,12 @@ class Net(nn.Module):
             nn.MaxPool1d(4),
         )
 
+        # self.conv3 = nn.Sequential(
+        #     nn.Conv1d(8, 4, kernel_size=3),
+        #     nn.ReLU(),
+        #     nn.MaxPool1d(4),
+        # )
+
         self.classifier = nn.Sequential(
             nn.Linear(in_features=160, out_features=64),
             nn.ReLU(),
@@ -140,6 +149,7 @@ class Net(nn.Module):
         x = self.conv0(x)
         x = self.conv1(x)
         x = self.conv2(x)
+        # x = self.conv3(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
@@ -150,7 +160,7 @@ if __name__ == '__main__':
 
     writer = SummaryWriter()
 
-    dataset = pd.read_csv('dataset/dataset.csv')
+    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
     # dataset['valence'] = np.random.randn(len(dataset))
     # dataset['arousal'] = np.random.randn(len(dataset))
     create_cluster(num_clusters=num_clusters)
@@ -166,19 +176,21 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
-    mean = train_data.xx.mean(axis=1).mean(axis=0)
-    std = train_data.xx.std(axis=1).std(axis=0)
+    # mean = train_data.xx.mean(axis=1).mean(axis=0)
+    # std = train_data.xx.std(axis=1).std(axis=0)
 
     # mean = train_data.xx.mean(axis=0)
     # std = train_data.xx.std(axis=0)
 
-    train_data.xx = (train_data.xx - mean) / std
-    val_data.xx = (val_data.xx - mean) / std
-    test_data.xx = (test_data.xx - mean) / std
+    # train_data.xx = (train_data.xx - mean) / std
+    # val_data.xx = (val_data.xx - mean) / std
+    # test_data.xx = (test_data.xx - mean) / std
 
     # Build model
     model = Net(n_mels=64, num_clusters=num_clusters)
-    # model.load_state_dict()
+    # model.load_state_dict(torch.load(
+    #     os.path.join('saved_models', 'model-1653693254.657536.pt'),
+    #     map_location=device))
 
     # Main training loop
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.003)
@@ -193,9 +205,9 @@ if __name__ == '__main__':
     max_acc_so_far = -1
 
     # make directory to store models
-    os.makedirs('saved_models', exist_ok=True)
+    os.makedirs(os.path.join(workdir, 'saved_models'), exist_ok=True)
 
-    for i in range(100):
+    for i in range(200):
 
         # Run an epoch of training
         train_running_loss = 0
@@ -247,7 +259,7 @@ if __name__ == '__main__':
         # Save models
         if val_acc > max_acc_so_far:
             max_acc_so_far = val_acc
-            torch.save(model.state_dict(), f'saved_models/model-{time.time()}.pt')
+            torch.save(model.state_dict(), os.path.join(workdir, f'saved_models/model-{time.time()}.pt'))
 
         val_acc_log.append(val_acc)
         val_loss_log.append(val_loss)
