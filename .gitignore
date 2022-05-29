@@ -9,7 +9,5 @@ saved_models
 tf-checkpoints
 tf-logs
 experiments
-tmp
-*.sh
 tests
 scripts
