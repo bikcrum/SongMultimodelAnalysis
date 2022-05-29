@@ -11,4 +11,5 @@ tf-logs
 experiments
 tmp
 *.sh
-test.ipynb
+tests
+scripts
