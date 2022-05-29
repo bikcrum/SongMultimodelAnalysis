@@ -6,7 +6,7 @@
 
 Order| Script                          |Decription
 ---|---------------------------------|---
-1.| create_empty_dataset_folders.sh |This creates empty directory where datasets will be downloaded. You need to change working directory in this file but you should not following dataset path.
+1.| create_empty_dataset_folders.sh |This creates empty directory where datasets will be downloaded. **You must change working directory in this file** but you should not following dataset path.
 2.| download_mp3.sh                 | Your mp3 songs will be downloaded              
 3.| converter_wav.sh                | Converts all your mp3 songs to wav format      
 4.| converter_melspectrogram.sh     | Converts all your wav songs to melspectrograms 
