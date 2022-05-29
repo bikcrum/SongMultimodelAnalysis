@@ -1,7 +1,9 @@
 .idea
 venv
+.venv2
 .ipynb_checkpoints
 dataset/previews
+dataset/org
 runs
 saved_models
 tf-checkpoints
