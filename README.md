@@ -10,7 +10,7 @@ Order| Script                          |Decription
 2.| download_mp3.sh                 | Your mp3 songs will be downloaded              
 3.| converter_wav.sh                | Converts all your mp3 songs to wav format      
 4.| converter_melspectrogram.sh     | Converts all your wav songs to melspectrograms 
-5.| train.sh | Trains your model. You can view your tensorboard at http://localhost:8080
+5.| train.sh | Trains your model. You can view your tensorboard at http://localhost:6006
 
 2. You must follow the order of execution as given above. For example. `converter_wav.sh` cannot be run before `download_mp3.sh`
 
