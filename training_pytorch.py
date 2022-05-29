@@ -13,6 +13,7 @@ from sklearn.cluster import KMeans
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from multiprocessing import Pool
 
 
 def create_cluster(dataset, num_clusters=None, show_cluster=False):
@@ -80,6 +81,7 @@ def split_data(dataset, shuffle=False, splits=None):
     return [_dataset[num_splits[-1]:]] + datasets
 
 
+# Preloads all data
 class DeezerMusicDataset(Dataset):
     def __init__(self, dataset, target_label='cluster', workdir='', transform=None):
         self.data = []
@@ -113,6 +115,7 @@ class DeezerMusicDataset(Dataset):
         return x, y
 
 
+# Loads data during training when needed
 class DeezerMusicDatasetOnDemand(Dataset):
     def __init__(self, dataset, target_label='cluster', exclude_missing_file=False, workdir='',
                  transform=None):
@@ -148,19 +151,99 @@ class DeezerMusicDatasetOnDemand(Dataset):
         return x, y
 
 
+# Lazy loads the dataset (Improves initial loading time)
+class DeezerMusicDatasetLazyLoad(Dataset):
+    def background_batch_fetch(self, i):
+        if self.data[i] is not None:
+            return
+
+        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data_id[i]}.npy'))
+
+        x = Tensor(x)
+
+        if self.transform is not None:
+            x = self.transform(x)
+
+        self.data[i] = x
+
+    def background_fetch(self):
+        with Pool(processes=10) as pool:
+            pool.map(self.background_batch_fetch, list(range(len(self.data_id))))
+
+    def __init__(self, dataset, target_label='cluster', exclude_missing_file=False, workdir='',
+                 transform=None):
+        self.workdir = workdir
+
+        self.data_id = list(filter(
+            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy'))
+                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')),
+            dataset.dzr_sng_id))
+
+        if not exclude_missing_file:
+            assert len(self.data_id) == len(
+                dataset), "Some files are missing. Use exclude_missing_file=True to exclude them in dataset"
+
+        self.data_id = np.array(self.data_id)
+        self.labels = dataset[[target_label]].squeeze().values
+
+        self.transform = transform
+
+        self.data = [None] * len(self.data_id)
+
+        self.background_fetch()
+
+    def __len__(self):
+        return self.data_id.shape[0]
+
+    def __getitem__(self, idx):
+        if self.data[idx] is not None:
+            return self.data[idx], self.labels[idx]
+
+        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data_id[idx]}.npy'))
+
+        x = Tensor(x)
+
+        if self.transform is not None:
+            x = self.transform(x)
+
+        self.data[idx] = x
+
+        y = self.labels[idx]
+
+        return x, y
+
+
 def get_data_loader(validation_split=0.2,
                     test_split=0.1,
                     num_classes=4,
                     batch_size=256,
-                    on_demand=True,
+                    loader_type='preload',
                     workdir=''):
+    assert loader_type == 'preload' or loader_type == 'on_demand' or loader_type == 'lazy_load'
+
     dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
 
     dataset['cluster'] = create_cluster(dataset, num_clusters=num_classes)
 
     train_split, val_split, test_split = split_data(dataset, splits=[validation_split, test_split])
 
-    if on_demand:
+    if loader_type == 'preload':
+        train_data = DeezerMusicDataset(train_split,
+                                        target_label='cluster',
+                                        workdir=workdir)
+
+        val_data = DeezerMusicDataset(val_split,
+                                      target_label='cluster',
+                                      workdir=workdir)
+
+        test_data = DeezerMusicDataset(test_split,
+                                       target_label='cluster',
+                                       workdir=workdir)
+
+        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    elif loader_type == 'on_demand':
         train_data = DeezerMusicDatasetOnDemand(train_split,
                                                 target_label='cluster',
                                                 exclude_missing_file=False,
@@ -179,22 +262,27 @@ def get_data_loader(validation_split=0.2,
         train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=4)
         val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=4)
         test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=4)
-    else:
-        train_data = DeezerMusicDataset(train_split,
-                                        target_label='cluster',
-                                        workdir=workdir)
+    elif loader_type == 'lazy_load':
+        train_data = DeezerMusicDatasetLazyLoad(train_split,
+                                                target_label='cluster',
+                                                exclude_missing_file=False,
+                                                workdir=workdir)
 
-        val_data = DeezerMusicDataset(val_split,
-                                      target_label='cluster',
-                                      workdir=workdir)
+        val_data = DeezerMusicDatasetLazyLoad(val_split,
+                                              target_label='cluster',
+                                              exclude_missing_file=False,
+                                              workdir=workdir)
 
-        test_data = DeezerMusicDataset(test_split,
-                                       target_label='cluster',
-                                       workdir=workdir)
+        test_data = DeezerMusicDatasetLazyLoad(test_split,
+                                               target_label='cluster',
+                                               exclude_missing_file=False,
+                                               workdir=workdir)
 
         train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    else:
+        raise Exception(f'Invalid loader_type:{loader_type}')
 
     return train_loader, val_loader, test_loader
 
@@ -271,7 +359,7 @@ def main():
     train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
                                                   num_classes=num_classes,
                                                   batch_size=batch_size,
-                                                  on_demand=True,
+                                                  loader_type='lazy_load',
                                                   workdir=workdir)
 
     # mean = train_data.xx.mean(axis=1).mean(axis=0)
@@ -365,11 +453,12 @@ def main():
         val_loss_log.append(val_loss)
 
         print(
-            "[Epoch {:3}]   Loss:  {:8.4}  Val Loss:  {:8.4}  Train Acc:  {:8.4}%      Val Acc:  {:8.4}%".format(i,
-                                                                                                                 train_running_loss,
-                                                                                                                 val_loss,
-                                                                                                                 train_running_acc * 100,
-                                                                                                                 val_acc * 100))
+            str(time.time()) + " [Epoch {:3}]   Loss:  {:8.4}  Val Loss:  {:8.4}  Train Acc:  {:8.4}%      Val Acc:  {:8.4}%".format(
+                i,
+                train_running_loss,
+                val_loss,
+                train_running_acc * 100,
+                val_acc * 100))
 
         # Write results to tensorboard
         writer.add_scalar('Accuracy/train', train_running_acc * 100, i)
