@@ -1,5 +1,4 @@
 import os
-import pickle
 import sys
 import time
 
@@ -15,37 +14,26 @@ from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-else:
-    try:
-        if torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
-    except:
-        device = torch.device("cpu")
 
-print(f"Using device: {device}")
-
-workdir = sys.argv[1] if len(sys.argv) > 1 else ''
-
-
-def create_cluster(num_clusters=None):
-    x = dataset.loc[:, ['valence', 'arousal']]
+def create_cluster(dataset, num_clusters=None, show_cluster=False):
+    _dataset = dataset.copy()
+    x = _dataset.loc[:, ['valence', 'arousal']]
 
     if num_clusters:
         kmeans = KMeans(num_clusters)
-        kmeans.fit(dataset[['valence', 'arousal']])
+        kmeans.fit(_dataset[['valence', 'arousal']])
         clusters = kmeans.fit_predict(x)
-        dataset['cluster'] = clusters
+        _dataset['cluster'] = clusters
+
+    if not show_cluster:
+        return clusters
 
     fig, ax = plt.subplots(1, figsize=(8, 8))
 
-    plt.scatter(dataset.valence, dataset.arousal, c=dataset.cluster)
+    plt.scatter(_dataset.valence, _dataset.arousal, c=_dataset.cluster)
 
-    for i in dataset.cluster.unique():
-        points = dataset[dataset.cluster == i][['valence', 'arousal']].values
+    for i in _dataset.cluster.unique():
+        points = _dataset[_dataset.cluster == i][['valence', 'arousal']].values
         hull = ConvexHull(points)
 
         x_hull = np.append(points[hull.vertices, 0],
@@ -65,6 +53,8 @@ def create_cluster(num_clusters=None):
         plt.title(f'Valence-Arousal {num_clusters}-clusters')
 
     plt.show()
+
+    return clusters
 
 
 def split_data(dataset, shuffle=False, splits=None):
@@ -91,47 +81,47 @@ def split_data(dataset, shuffle=False, splits=None):
 
 
 class DeezerMusicDataset(Dataset):
-    def __init__(self, dataset, transform=None):
-        self.xx = []
+    def __init__(self, dataset, target_label='cluster', workdir='', transform=None):
+        self.data = []
         for song_id in dataset.dzr_sng_id:
-            with open(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel'), 'rb') as r:
-                x = np.array(pickle.load(r))
-                self.xx.append(x)
-            # self.xx.append(np.load(f'dataset/previews/melspectrogram/{song_id}.mel'))
+            self.data.append(np.load(f'dataset/previews/melspectrogram/{song_id}.npy'))
 
-        assert len(dataset) == len(self.xx), "Some audio couldn't be loaded"
+        assert len(dataset) == len(self.data), "Some audio couldn't be loaded"
 
-        bad_shape_data = list(filter(lambda x: x[1].shape != self.xx[0].shape, enumerate(self.xx)))
+        bad_shape_data = list(filter(lambda x: x[1].shape != self.data[0].shape, enumerate(self.data)))
 
         if len(bad_shape_data) > 0:
             bad_shape_data_index, _ = zip(*bad_shape_data)
             raise Exception('Some audio data are corrupted', dataset.iloc[np.array(bad_shape_data_index)].dzr_sng_id)
 
-        self.xx = np.array(self.xx)
-        self.yy = dataset[['cluster']].squeeze().values
+        self.data = np.array(self.data)
+        self.label = dataset[[target_label]].squeeze().values
 
         self.transform = transform
 
     def __len__(self):
-        return self.yy.shape[0]
+        return self.label.shape[0]
 
     def __getitem__(self, idx):
-        x = Tensor(self.xx[idx])
+        x = Tensor(self.data[idx])
 
         if self.transform is not None:
             x = self.transform(x)
 
-        y = self.yy[idx]
+        y = self.label[idx]
 
         return x, y
 
 
-class DeezerMusicDataset1(Dataset):
-    def __init__(self, dataset, label, exclude_missing_file=False, transform=None):
+class DeezerMusicDatasetOnDemand(Dataset):
+    def __init__(self, dataset, target_label='cluster', cached=False, exclude_missing_file=False, workdir='',
+                 transform=None):
+        self.workdir = workdir
+        self.cached = cached
 
         self.data = list(filter(
-            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel'))
-                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.mel')),
+            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy'))
+                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')),
             dataset.dzr_sng_id))
 
         if not exclude_missing_file:
@@ -139,28 +129,90 @@ class DeezerMusicDataset1(Dataset):
                 dataset), "Some files are missing. Use exclude_missing_file=True to exclude them in dataset"
 
         self.data = np.array(self.data)
-        self.labels = dataset[[label]].squeeze().values
+        self.labels = dataset[[target_label]].squeeze().values
 
         self.transform = transform
+
+        self.cache = [None] * len(dataset)
 
     def __len__(self):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        x = np.load(f'dataset/previews/melspectrogram3/{self.data[idx]}.npy')
+        if self.cache[idx] is not None:
+            return self.cache[idx], self.labels[idx]
+
+        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data[idx]}.npy'))
 
         x = Tensor(x)
 
         if self.transform is not None:
             x = self.transform(x)
 
+        if self.cached:
+            self.cache[idx] = x
+
         y = self.labels[idx]
 
         return x, y
 
 
+def get_data_loader(validation_split=0.2,
+                    test_split=0.1,
+                    num_classes=4,
+                    batch_size=256,
+                    on_demand=True,
+                    workdir=''):
+    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
+
+    dataset['cluster'] = create_cluster(dataset, num_clusters=num_classes)
+
+    train_split, val_split, test_split = split_data(dataset, splits=[validation_split, test_split])
+
+    if on_demand:
+        train_data = DeezerMusicDatasetOnDemand(train_split,
+                                                target_label='cluster',
+                                                cached=True,
+                                                exclude_missing_file=False,
+                                                workdir=workdir)
+
+        val_data = DeezerMusicDatasetOnDemand(val_split,
+                                              target_label='cluster',
+                                              cached=True,
+                                              exclude_missing_file=False,
+                                              workdir=workdir)
+
+        test_data = DeezerMusicDatasetOnDemand(test_split,
+                                               target_label='cluster',
+                                               cached=True,
+                                               exclude_missing_file=False,
+                                               workdir=workdir)
+
+        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=4)
+        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=4)
+        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=4)
+    else:
+        train_data = DeezerMusicDataset(train_split,
+                                        target_label='cluster',
+                                        workdir=workdir)
+
+        val_data = DeezerMusicDataset(val_split,
+                                      target_label='cluster',
+                                      workdir=workdir)
+
+        test_data = DeezerMusicDataset(test_split,
+                                       target_label='cluster',
+                                       workdir=workdir)
+
+        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader
+
+
 class Net(nn.Module):
-    def __init__(self, n_mels, num_clusters):
+    def __init__(self, n_mels, num_classes):
         super(Net, self).__init__()
 
         self.conv0 = nn.Sequential(
@@ -188,7 +240,7 @@ class Net(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(in_features=160, out_features=64),
             nn.ReLU(),
-            nn.Linear(in_features=64, out_features=num_clusters))
+            nn.Linear(in_features=64, out_features=num_classes))
 
     def forward(self, x):
         x = x.transpose(1, 2)
@@ -201,24 +253,38 @@ class Net(nn.Module):
         return x
 
 
-if __name__ == '__main__':
-    num_clusters = 4
+def main():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        try:
+            # For apple silicon
+            if torch.backends.mps.is_available():
+                device = torch.device("mps")
+            else:
+                device = torch.device("cpu")
+        except:
+            device = torch.device("cpu")
+
+    print(f"Using device: {device}")
+
+    workdir = sys.argv[1] if len(sys.argv) > 1 else ''
 
     writer = SummaryWriter()
 
-    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
-    create_cluster(num_clusters=num_clusters)
-
-    train_split, val_split, test_split = split_data(dataset, splits=[0.2, 0.1])
-
-    train_data = DeezerMusicDataset1(train_split, label='cluster')
-    val_data = DeezerMusicDataset1(val_split, label='cluster')
-    test_data = DeezerMusicDataset1(test_split, label='cluster')
-
+    # Hyperparameters
+    num_classes = 4
+    validation_split = 0.2
     batch_size = 256
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=2)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=2)
+    n_mels = 64
+    learning_rate = 1e-4
+    weight_decay = 0.003
+
+    train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
+                                                  num_classes=num_classes,
+                                                  batch_size=batch_size,
+                                                  on_demand=True,
+                                                  workdir=workdir)
 
     # mean = train_data.xx.mean(axis=1).mean(axis=0)
     # std = train_data.xx.std(axis=1).std(axis=0)
@@ -231,13 +297,15 @@ if __name__ == '__main__':
     # test_data.xx = (test_data.xx - mean) / std
 
     # Build model
-    model = Net(n_mels=64, num_clusters=num_clusters)
+    model = Net(n_mels=n_mels, num_classes=num_classes)
     # model.load_state_dict(torch.load(
     #     os.path.join('saved_models', 'model-1653693254.657536.pt'),
     #     map_location=device))
 
     # Main training loop
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=0.003)
+    optimizer = torch.optim.Adam(model.parameters(),
+                                 lr=learning_rate,
+                                 weight_decay=weight_decay)
     criterion = torch.nn.CrossEntropyLoss()
 
     model = model.to(device)
@@ -278,7 +346,7 @@ if __name__ == '__main__':
             acc_log.append(correct.item() / len(y))
 
         train_running_loss /= j
-        train_running_acc /= len(train_split)
+        train_running_acc /= len(train_loader.dataset)
 
         # Evaluate on validation
         val_acc = 0
@@ -297,7 +365,7 @@ if __name__ == '__main__':
             val_acc += correct.item()
             val_loss += loss.item()
 
-        val_acc /= len(val_split)
+        val_acc /= len(val_loader.dataset)
         val_loss /= j
 
         # Save models
@@ -331,7 +399,8 @@ if __name__ == '__main__':
     fig, ax1 = plt.subplots(figsize=(16, 9))
     color = 'tab:red'
     ax1.plot(range(len(loss_log)), loss_log, c=color, alpha=0.25, label="Train Loss")
-    ax1.plot([np.ceil((i + 1) * len(train_data) / batch_size) for i in range(len(val_loss_log))], val_loss_log, c="red",
+    ax1.plot([np.ceil((i + 1) * len(train_loader.dataset) / batch_size) for i in range(len(val_loss_log))],
+             val_loss_log, c="red",
              label="Val. Loss")
     ax1.set_xlabel("Iterations")
     ax1.set_ylabel("Avg. Cross-Entropy Loss", c=color)
@@ -342,7 +411,8 @@ if __name__ == '__main__':
 
     color = 'tab:blue'
     ax2.plot(range(len(acc_log)), acc_log, c=color, label="Train Acc.", alpha=0.25)
-    ax2.plot([np.ceil((i + 1) * len(train_data) / batch_size) for i in range(len(val_acc_log))], val_acc_log, c="blue",
+    ax2.plot([np.ceil((i + 1) * len(train_loader.dataset) / batch_size) for i in range(len(val_acc_log))], val_acc_log,
+             c="blue",
              label="Val. Acc.")
     ax2.set_ylabel(" Accuracy", c=color)
     ax2.tick_params(axis='y', labelcolor=color)
@@ -352,3 +422,7 @@ if __name__ == '__main__':
     ax1.legend(loc="center")
     ax2.legend(loc="center right")
     plt.show()
+
+
+if __name__ == '__main__':
+    main()
