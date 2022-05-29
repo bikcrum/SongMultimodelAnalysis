@@ -77,7 +77,7 @@ def convert(dataset, batch_id):
     tq = tqdm(range(len(dataset)))
     for i in tq:
         tq.set_description(f'Converting:{batch_id + i}')
-        np.save(os.path.join(workdir, f'dataset/previews/melspectrogram3/{dataset.iloc[i].dzr_sng_id}.npy'),
+        np.save(os.path.join(workdir, f'dataset/previews/melspectrogram/{dataset.iloc[i].dzr_sng_id}.npy'),
                 log_magnitude_mel_spectrograms[i])
 
 
