@@ -114,10 +114,9 @@ class DeezerMusicDataset(Dataset):
 
 
 class DeezerMusicDatasetOnDemand(Dataset):
-    def __init__(self, dataset, target_label='cluster', cached=False, exclude_missing_file=False, workdir='',
+    def __init__(self, dataset, target_label='cluster', exclude_missing_file=False, workdir='',
                  transform=None):
         self.workdir = workdir
-        self.cached = cached
 
         self.data = list(filter(
             lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy'))
@@ -133,24 +132,16 @@ class DeezerMusicDatasetOnDemand(Dataset):
 
         self.transform = transform
 
-        self.cache = [None] * len(dataset)
-
     def __len__(self):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
-        if self.cache[idx] is not None:
-            return self.cache[idx], self.labels[idx]
-
         x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data[idx]}.npy'))
 
         x = Tensor(x)
 
         if self.transform is not None:
             x = self.transform(x)
-
-        if self.cached:
-            self.cache[idx] = x
 
         y = self.labels[idx]
 
@@ -172,19 +163,16 @@ def get_data_loader(validation_split=0.2,
     if on_demand:
         train_data = DeezerMusicDatasetOnDemand(train_split,
                                                 target_label='cluster',
-                                                cached=True,
                                                 exclude_missing_file=False,
                                                 workdir=workdir)
 
         val_data = DeezerMusicDatasetOnDemand(val_split,
                                               target_label='cluster',
-                                              cached=True,
                                               exclude_missing_file=False,
                                               workdir=workdir)
 
         test_data = DeezerMusicDatasetOnDemand(test_split,
                                                target_label='cluster',
-                                               cached=True,
                                                exclude_missing_file=False,
                                                workdir=workdir)
 
