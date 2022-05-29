@@ -21,7 +21,7 @@ def convert_to_wav(dataset):
     if len(dataset) == 0:
         return
 
-    batch_size = 1
+    batch_size = 100
     refs = []
     for i in range(0, len(dataset), batch_size):
         refs.append(convert_batch_to_wav.remote(dataset[i:min(len(dataset), i + batch_size)], i))
