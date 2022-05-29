@@ -12,42 +12,32 @@ from data_loader import get_data_loader
 
 
 class Net(nn.Module):
-    def __init__(self, n_mels, num_classes):
+    def __init__(self, n_mels, num_classes, input_dim):
         super(Net, self).__init__()
 
-        self.conv0 = nn.Sequential(
+        self.feature_extractor = nn.Sequential(
             nn.Conv1d(n_mels, 32, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool1d(4))
+            nn.MaxPool1d(4),
 
-        self.conv1 = nn.Sequential(
             nn.Conv1d(32, 16, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool1d(4))
+            nn.MaxPool1d(4),
 
-        self.conv2 = nn.Sequential(
             nn.Conv1d(16, 8, kernel_size=3),
-            nn.ReLU(),
             nn.MaxPool1d(4),
         )
 
-        # self.conv3 = nn.Sequential(
-        #     nn.Conv1d(8, 4, kernel_size=3),
-        #     nn.ReLU(),
-        #     nn.MaxPool1d(4),
-        # )
+        x = self.feature_extractor(torch.rand(n_mels, input_dim))
+        in_features = np.prod(x.shape)
+        print(f'Calculated in_features={in_features}')
 
         self.classifier = nn.Sequential(
-            nn.Linear(in_features=160, out_features=64),
+            nn.Linear(in_features=in_features, out_features=64),
             nn.ReLU(),
             nn.Linear(in_features=64, out_features=num_classes))
 
     def forward(self, x):
         x = x.transpose(1, 2)
-        x = self.conv0(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        # x = self.conv3(x)
+        x = self.feature_extractor(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
@@ -77,13 +67,14 @@ def main():
     validation_split = 0.2
     batch_size = 256
     n_mels = 64
+    input_dim = 1322
     learning_rate = 1e-4
     weight_decay = 0.003
 
     train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
                                                   num_classes=num_classes,
                                                   batch_size=batch_size,
-                                                  loader_type='lazy_load',
+                                                  loader_type='preload',
                                                   workdir=workdir)
 
     # mean = train_data.xx.mean(axis=1).mean(axis=0)
@@ -97,7 +88,7 @@ def main():
     # test_data.xx = (test_data.xx - mean) / std
 
     # Build model
-    model = Net(n_mels=n_mels, num_classes=num_classes)
+    model = Net(n_mels=n_mels, num_classes=num_classes, input_dim=input_dim)
     # model.load_state_dict(torch.load(
     #     os.path.join('saved_models', 'model-1653693254.657536.pt'),
     #     map_location=device))
