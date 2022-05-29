@@ -84,7 +84,7 @@ class DeezerMusicDataset(Dataset):
     def __init__(self, dataset, target_label='cluster', workdir='', transform=None):
         self.data = []
         for song_id in dataset.dzr_sng_id:
-            self.data.append(np.load(f'dataset/previews/melspectrogram/{song_id}.npy'))
+            self.data.append(np.load(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')))
 
         assert len(dataset) == len(self.data), "Some audio couldn't be loaded"
 
