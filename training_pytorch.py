@@ -12,31 +12,78 @@ from data_loader import get_data_loader
 
 
 class Net(nn.Module):
-    def __init__(self, n_mels, num_classes, input_dim):
+    def __init__(self, num_classes):
         super(Net, self).__init__()
 
+        # 1-channel
+        # self.feature_extractor = nn.Sequential(
+        #     nn.Conv1d(128, 32, kernel_size=3),
+        #     nn.MaxPool1d(4),
+        #
+        #     nn.Conv1d(32, 32, kernel_size=3),
+        #     nn.MaxPool1d(4),
+        #
+        #     nn.Conv1d(32, 32, kernel_size=3),
+        #     nn.MaxPool1d(4),
+        # )
+
+        # self.feature_extractor = nn.Sequential(
+        #     nn.Conv1d(in_channels=64,
+        #               out_channels=32,
+        #               kernel_size=3,
+        #               padding=1)
+        #     , nn.ReLU(inplace=True)
+        #     , nn.Conv1d(in_channels=32,
+        #                 out_channels=16,
+        #                 kernel_size=3,
+        #                 padding=1)
+        #     , nn.MaxPool1d(kernel_size=4)
+        #     , nn.ReLU(inplace=True)
+        #
+        #     , nn.MaxPool1d(kernel_size=4),
+        # )
+        # 3-channel
         self.feature_extractor = nn.Sequential(
-            nn.Conv1d(n_mels, 32, kernel_size=3),
-            nn.MaxPool1d(4),
-
-            nn.Conv1d(32, 16, kernel_size=3),
-            nn.MaxPool1d(4),
-
-            nn.Conv1d(16, 8, kernel_size=3),
-            nn.MaxPool1d(4),
+            nn.Conv2d(in_channels=1,
+                      out_channels=32,
+                      kernel_size=(3, 3),
+                      padding=1)
+            , nn.ReLU(inplace=True)
+            , nn.Conv2d(in_channels=32,
+                        out_channels=32,
+                        kernel_size=(3, 3),
+                        padding=1)
+            , nn.MaxPool2d(kernel_size=(4, 4))
+            , nn.ReLU(inplace=True)
+            , nn.Conv2d(in_channels=32,
+                        out_channels=64,
+                        kernel_size=(3, 3),
+                        padding=1)
+            , nn.ReLU(inplace=True)
+            , nn.Conv2d(in_channels=64,
+                        out_channels=64,
+                        kernel_size=(3, 3),
+                        padding=1)
+            , nn.ReLU(inplace=True)
+            , nn.MaxPool2d(kernel_size=(4, 4)),
         )
 
-        x = self.feature_extractor(torch.rand(n_mels, input_dim))
+        x = self.feature_extractor(torch.rand(1, 64, 1292))
         in_features = np.prod(x.shape)
         print(f'Calculated in_features={in_features}')
 
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(in_features=in_features, out_features=64),
+        #     nn.ReLU(),
+        #     nn.Linear(in_features=64, out_features=num_classes))
+
         self.classifier = nn.Sequential(
-            nn.Linear(in_features=in_features, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=num_classes))
+            nn.Linear(in_features=20480, out_features=512), nn.BatchNorm1d(512)
+            , nn.ReLU(inplace=True)
+            , nn.Linear(in_features=512, out_features=4)
+        )
 
     def forward(self, x):
-        x = x.transpose(1, 2)
         x = self.feature_extractor(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
@@ -58,42 +105,36 @@ def main():
 
     print(f"Using device: {device}")
 
-    workdir = sys.argv[1] if len(sys.argv) > 1 else ''
+    dataset_dir = sys.argv[1] if len(sys.argv) > 1 else ''
 
     writer = SummaryWriter()
 
     # Hyperparameters
     num_classes = 4
     validation_split = 0.2
-    batch_size = 256
-    n_mels = 64
-    input_dim = 1322
+    batch_size = 64
     learning_rate = 1e-4
     weight_decay = 0.003
 
     train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
+                                                  test_split=0,
                                                   num_classes=num_classes,
                                                   batch_size=batch_size,
-                                                  loader_type='preload',
-                                                  workdir=workdir)
-
-    # mean = train_data.xx.mean(axis=1).mean(axis=0)
-    # std = train_data.xx.std(axis=1).std(axis=0)
-
-    # mean = train_data.xx.mean(axis=0)
-    # std = train_data.xx.std(axis=0)
-
-    # train_data.xx = (train_data.xx - mean) / std
-    # val_data.xx = (val_data.xx - mean) / std
-    # test_data.xx = (test_data.xx - mean) / std
+                                                  dataset_dir=dataset_dir)
 
     # Build model
-    model = Net(n_mels=n_mels, num_classes=num_classes, input_dim=input_dim)
+    model = Net(num_classes)
+
+    # model = resnet34(pretrained=True)
+    # model.fc = nn.Linear(512, 50)
+    # model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+
+    # Load saved models
     # model.load_state_dict(torch.load(
     #     os.path.join('saved_models', 'model-1653693254.657536.pt'),
     #     map_location=device))
 
-    # Main training loop
+    # Init optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=learning_rate,
                                  weight_decay=weight_decay)
@@ -108,9 +149,10 @@ def main():
     max_acc_so_far = -1
 
     # make directory to store models
-    os.makedirs(os.path.join(workdir, 'saved_models'), exist_ok=True)
+    os.makedirs(os.path.join(dataset_dir, 'saved_models'), exist_ok=True)
 
-    for i in range(200):
+    # Main training loop
+    for i in range(100):
 
         # Run an epoch of training
         train_running_loss = 0
@@ -162,7 +204,7 @@ def main():
         # Save models
         if val_acc > max_acc_so_far:
             max_acc_so_far = val_acc
-            torch.save(model.state_dict(), os.path.join(workdir, f'saved_models/model-{time.time()}.pt'))
+            torch.save(model.state_dict(), os.path.join(dataset_dir, f'saved_models/model-{time.time()}.pt'))
 
         val_acc_log.append(val_acc)
         val_loss_log.append(val_loss)

@@ -1,5 +1,4 @@
 import os
-from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,8 +6,10 @@ import pandas as pd
 from scipy import interpolate
 from scipy.spatial import ConvexHull
 from sklearn.cluster import KMeans
-from torch import Tensor
-from torch.utils.data import Dataset, DataLoader
+from sklearn.utils import shuffle
+from torch.utils.data import DataLoader
+
+from custom_dataset import AudioDataset
 
 
 def create_cluster(dataset, num_clusters=None, show_cluster=False):
@@ -53,7 +54,7 @@ def create_cluster(dataset, num_clusters=None, show_cluster=False):
     return clusters
 
 
-def split_data(dataset, shuffle=False, splits=None):
+def split_data(dataset, shuffle=False, splits=None, show_result=False):
     if splits is None:
         splits = []
 
@@ -73,210 +74,50 @@ def split_data(dataset, shuffle=False, splits=None):
         start, end = num_splits[i], num_splits[i + 1]
         datasets.append(_dataset[start:end])
 
-    return [_dataset[num_splits[-1]:]] + datasets
+    datasets = [_dataset[num_splits[-1]:]] + datasets
 
+    if show_result:
+        for dataset in datasets:
+            plt.scatter(dataset.valence, dataset.arousal)
+            plt.xlabel('Valance')
+            plt.ylabel('Arousal')
+            plt.title(f'Data count: {len(dataset)}')
+            plt.show()
 
-# Preloads all data
-class DeezerMusicDataset(Dataset):
-    def __init__(self, dataset, target_label='cluster', workdir='', transform=None):
-        self.data = []
-        for song_id in dataset.dzr_sng_id:
-            self.data.append(np.load(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')))
-
-        assert len(dataset) == len(self.data), "Some audio couldn't be loaded"
-
-        bad_shape_data = list(filter(lambda x: x[1].shape != self.data[0].shape, enumerate(self.data)))
-
-        if len(bad_shape_data) > 0:
-            bad_shape_data_index, _ = zip(*bad_shape_data)
-            raise Exception('Some audio data are corrupted', dataset.iloc[np.array(bad_shape_data_index)].dzr_sng_id)
-
-        self.data = np.array(self.data)
-        self.label = dataset[[target_label]].squeeze().values
-
-        self.transform = transform
-
-    def __len__(self):
-        return self.label.shape[0]
-
-    def __getitem__(self, idx):
-        x = Tensor(self.data[idx])
-
-        if self.transform is not None:
-            x = self.transform(x)
-
-        y = self.label[idx]
-
-        return x, y
-
-
-# Loads data during training when needed
-class DeezerMusicDatasetOnDemand(Dataset):
-    def __init__(self, dataset, target_label='cluster', exclude_missing_file=False, workdir='',
-                 transform=None):
-        self.workdir = workdir
-
-        self.data = list(filter(
-            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy'))
-                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')),
-            dataset.dzr_sng_id))
-
-        if not exclude_missing_file:
-            assert len(self.data) == len(
-                dataset), "Some files are missing. Use exclude_missing_file=True to exclude them in dataset"
-
-        self.data = np.array(self.data)
-        self.labels = dataset[[target_label]].squeeze().values
-
-        self.transform = transform
-
-    def __len__(self):
-        return self.data.shape[0]
-
-    def __getitem__(self, idx):
-        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data[idx]}.npy'))
-
-        x = Tensor(x)
-
-        if self.transform is not None:
-            x = self.transform(x)
-
-        y = self.labels[idx]
-
-        return x, y
-
-
-# Lazy loads the dataset (Improves initial loading time)
-class DeezerMusicDatasetLazyLoad(Dataset):
-    def background_batch_fetch(self, i):
-        if self.data[i] is not None:
-            return
-
-        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data_id[i]}.npy'))
-
-        x = Tensor(x)
-
-        if self.transform is not None:
-            x = self.transform(x)
-
-        self.data[i] = x
-
-    def background_fetch(self):
-        with Pool(processes=10) as pool:
-            pool.map(self.background_batch_fetch, list(range(len(self.data_id))))
-
-    def __init__(self, dataset, target_label='cluster', exclude_missing_file=False, workdir='',
-                 transform=None):
-        self.workdir = workdir
-
-        self.data_id = list(filter(
-            lambda song_id: os.path.exists(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy'))
-                            and os.path.isfile(os.path.join(workdir, f'dataset/previews/melspectrogram/{song_id}.npy')),
-            dataset.dzr_sng_id))
-
-        if not exclude_missing_file:
-            assert len(self.data_id) == len(
-                dataset), "Some files are missing. Use exclude_missing_file=True to exclude them in dataset"
-
-        self.data_id = np.array(self.data_id)
-        self.labels = dataset[[target_label]].squeeze().values
-
-        self.transform = transform
-
-        self.data = [None] * len(self.data_id)
-
-        self.background_fetch()
-
-    def __len__(self):
-        return self.data_id.shape[0]
-
-    def __getitem__(self, idx):
-        if self.data[idx] is not None:
-            return self.data[idx], self.labels[idx]
-
-        x = np.load(os.path.join(self.workdir, f'dataset/previews/melspectrogram/{self.data_id[idx]}.npy'))
-
-        x = Tensor(x)
-
-        if self.transform is not None:
-            x = self.transform(x)
-
-        self.data[idx] = x
-
-        y = self.labels[idx]
-
-        return x, y
+    return datasets
 
 
 def get_data_loader(validation_split=0.2,
                     test_split=0.1,
                     num_classes=4,
                     batch_size=256,
-                    loader_type='preload',
-                    workdir=''):
-    assert loader_type == 'preload' or loader_type == 'on_demand' or loader_type == 'lazy_load'
+                    dataset_dir=''):
+    dataset = pd.read_csv(os.path.join(dataset_dir, 'dataset.csv'))
+    dataset = shuffle(dataset)
 
-    dataset = pd.read_csv(os.path.join(workdir, 'dataset/dataset.csv'))
+    dataset['label'] = create_cluster(dataset,
+                                      num_clusters=num_classes,
+                                      show_cluster=False)
 
-    dataset['cluster'] = create_cluster(dataset, num_clusters=num_classes)
+    train_split, val_split, test_split = split_data(dataset,
+                                                    splits=[validation_split, test_split],
+                                                    show_result=False)
 
-    train_split, val_split, test_split = split_data(dataset, splits=[validation_split, test_split])
+    train_data = AudioDataset(df=train_split,
+                              feature_label='dzr_sng_id',
+                              target_label='label',
+                              audio_directory=os.path.join(dataset_dir, 'previews/wav'),
+                              preload=True,
+                              transform=None)
 
-    if loader_type == 'preload':
-        train_data = DeezerMusicDataset(train_split,
-                                        target_label='cluster',
-                                        workdir=workdir)
+    val_data = AudioDataset(df=val_split,
+                            feature_label='dzr_sng_id',
+                            target_label='label',
+                            audio_directory=os.path.join(dataset_dir, 'previews/wav'),
+                            preload=True,
+                            transform=None)
 
-        val_data = DeezerMusicDataset(val_split,
-                                      target_label='cluster',
-                                      workdir=workdir)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
 
-        test_data = DeezerMusicDataset(test_split,
-                                       target_label='cluster',
-                                       workdir=workdir)
-
-        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-    elif loader_type == 'on_demand':
-        train_data = DeezerMusicDatasetOnDemand(train_split,
-                                                target_label='cluster',
-                                                exclude_missing_file=False,
-                                                workdir=workdir)
-
-        val_data = DeezerMusicDatasetOnDemand(val_split,
-                                              target_label='cluster',
-                                              exclude_missing_file=False,
-                                              workdir=workdir)
-
-        test_data = DeezerMusicDatasetOnDemand(test_split,
-                                               target_label='cluster',
-                                               exclude_missing_file=False,
-                                               workdir=workdir)
-
-        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=4)
-        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=4)
-        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=4)
-    elif loader_type == 'lazy_load':
-        train_data = DeezerMusicDatasetLazyLoad(train_split,
-                                                target_label='cluster',
-                                                exclude_missing_file=False,
-                                                workdir=workdir)
-
-        val_data = DeezerMusicDatasetLazyLoad(val_split,
-                                              target_label='cluster',
-                                              exclude_missing_file=False,
-                                              workdir=workdir)
-
-        test_data = DeezerMusicDatasetLazyLoad(test_split,
-                                               target_label='cluster',
-                                               exclude_missing_file=False,
-                                               workdir=workdir)
-
-        train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-        test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
-    else:
-        raise Exception(f'Invalid loader_type:{loader_type}')
-
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, None
