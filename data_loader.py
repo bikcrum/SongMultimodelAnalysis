@@ -109,8 +109,6 @@ def get_data_loader(validation_split=0.2,
     # dataset['label'] = create_cluster(dataset, 4, ['valence', 'arousal'])
     # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
 
-    assert len(classes_name) == num_classes
-
     plot_cluster(dataset, ['valence', 'arousal'], target_label, classes_name)
 
     dataset = shuffle(dataset)

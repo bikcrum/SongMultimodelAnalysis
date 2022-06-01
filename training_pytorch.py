@@ -83,7 +83,7 @@ class Net(nn.Module):
         #     nn.Linear(in_features=64, out_features=num_classes))
 
         self.classifier = nn.Sequential(
-            nn.Linear(in_features=in_features, out_features=4)
+            nn.Linear(in_features=in_features, out_features=num_classes)
         )
 
     def forward(self, x):
