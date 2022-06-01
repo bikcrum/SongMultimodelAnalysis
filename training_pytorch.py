@@ -4,6 +4,8 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
@@ -16,16 +18,19 @@ class Net(nn.Module):
         super(Net, self).__init__()
 
         # 1-channel
-        # self.feature_extractor = nn.Sequential(
-        #     nn.Conv1d(128, 32, kernel_size=3),
-        #     nn.MaxPool1d(4),
-        #
-        #     nn.Conv1d(32, 32, kernel_size=3),
-        #     nn.MaxPool1d(4),
-        #
-        #     nn.Conv1d(32, 32, kernel_size=3),
-        #     nn.MaxPool1d(4),
-        # )
+        self.feature_extractor = nn.Sequential(
+            nn.Conv1d(64, 32, kernel_size=3)
+            , nn.ReLU(inplace=True),
+            nn.MaxPool1d(4),
+            #
+            # nn.Conv1d(32, 16, kernel_size=3),
+            # nn.ReLU(inplace=True),
+            # nn.MaxPool1d(4),
+
+            # nn.Conv1d(64, 32, kernel_size=3)
+            # , nn.ReLU(inplace=True),
+            # nn.MaxPool1d(4),
+        )
 
         # self.feature_extractor = nn.Sequential(
         #     nn.Conv1d(in_channels=64,
@@ -43,32 +48,32 @@ class Net(nn.Module):
         #     , nn.MaxPool1d(kernel_size=4),
         # )
         # 3-channel
-        self.feature_extractor = nn.Sequential(
-            nn.Conv2d(in_channels=1,
-                      out_channels=32,
-                      kernel_size=(3, 3),
-                      padding=1)
-            , nn.ReLU(inplace=True)
-            , nn.Conv2d(in_channels=32,
-                        out_channels=32,
-                        kernel_size=(3, 3),
-                        padding=1)
-            , nn.MaxPool2d(kernel_size=(4, 4))
-            , nn.ReLU(inplace=True)
-            , nn.Conv2d(in_channels=32,
-                        out_channels=64,
-                        kernel_size=(3, 3),
-                        padding=1)
-            , nn.ReLU(inplace=True)
-            , nn.Conv2d(in_channels=64,
-                        out_channels=64,
-                        kernel_size=(3, 3),
-                        padding=1)
-            , nn.ReLU(inplace=True)
-            , nn.MaxPool2d(kernel_size=(4, 4)),
-        )
+        # self.feature_extractor = nn.Sequential(
+        #     nn.Conv2d(in_channels=1,
+        #               out_channels=32,
+        #               kernel_size=(3, 3),
+        #               padding=1)
+        #     , nn.ReLU(inplace=True)
+        #     , nn.Conv2d(in_channels=32,
+        #                 out_channels=32,
+        #                 kernel_size=(3, 3),
+        #                 padding=1)
+        #     , nn.MaxPool2d(kernel_size=(4, 4))
+        #     , nn.ReLU(inplace=True)
+        #     , nn.Conv2d(in_channels=32,
+        #                 out_channels=64,
+        #                 kernel_size=(3, 3),
+        #                 padding=1)
+        #     , nn.ReLU(inplace=True)
+        #     , nn.Conv2d(in_channels=64,
+        #                 out_channels=64,
+        #                 kernel_size=(3, 3),
+        #                 padding=1)
+        #     , nn.ReLU(inplace=True)
+        #     , nn.MaxPool2d(kernel_size=(4, 4)),
+        # )
 
-        x = self.feature_extractor(torch.rand(1, 64, 1292))
+        x = self.feature_extractor(torch.rand(64, 1292))
         in_features = np.prod(x.shape)
         print(f'Calculated in_features={in_features}')
 
@@ -78,9 +83,7 @@ class Net(nn.Module):
         #     nn.Linear(in_features=64, out_features=num_classes))
 
         self.classifier = nn.Sequential(
-            nn.Linear(in_features=20480, out_features=512), nn.BatchNorm1d(512)
-            , nn.ReLU(inplace=True)
-            , nn.Linear(in_features=512, out_features=4)
+            nn.Linear(in_features=in_features, out_features=4)
         )
 
     def forward(self, x):
@@ -111,15 +114,22 @@ def main():
 
     # Hyperparameters
     num_classes = 4
-    validation_split = 0.2
+    validation_split = 0.1
     batch_size = 64
     learning_rate = 1e-4
-    weight_decay = 0.003
+    weight_decay = 0.03
+
+    # Warning: Re-clustering might change the order of classes
+    classes_name = {0: 'HV-LA',
+                    1: 'HV-HA',
+                    2: 'LV-LA',
+                    3: 'LV-HA'}
 
     train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
                                                   test_split=0,
                                                   num_classes=num_classes,
                                                   batch_size=batch_size,
+                                                  classes_name=classes_name,
                                                   dataset_dir=dataset_dir)
 
     # Build model
@@ -185,6 +195,7 @@ def main():
         val_acc = 0
         val_loss = 0
         model.eval()
+        confusion_matrix = np.zeros((num_classes, num_classes))
         for j, input in enumerate(val_loader, 0):
             x = input[0].to(device)
             y = input[1].type(torch.LongTensor).to(device)
@@ -198,8 +209,21 @@ def main():
             val_acc += correct.item()
             val_loss += loss.item()
 
+            for t, p in zip(y.view(-1), predicted.view(-1)):
+                confusion_matrix[t.long(), p.long()] += 1
+
         val_acc /= len(val_loader.dataset)
         val_loss /= j
+
+        _, labels = zip(*sorted(classes_name.items(), key=lambda x: x[0]))
+        df_cm = pd.DataFrame(confusion_matrix, index=labels, columns=labels).astype(int)
+        heatmap = sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
+
+        heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=90, ha='right', fontsize=15)
+        heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=0, ha='center', fontsize=15)
+        plt.ylabel('True class')
+        plt.xlabel('Predicted class')
+        plt.show()
 
         # Save models
         if val_acc > max_acc_so_far:

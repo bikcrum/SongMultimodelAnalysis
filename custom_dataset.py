@@ -20,6 +20,7 @@ class AudioUtil:
     n_mels = 64
     hop_length = None
     top_db = 80
+    max_mask_pct = 0.1
     num_samples = duration * sample_rate
 
     @staticmethod
@@ -45,6 +46,11 @@ class AudioUtil:
 
         signal = signal[:AudioUtil.num_samples]
 
+        # time shift
+        sig_len = len(signal)
+        shift_amt = int(np.random.random() * AudioUtil.pitch_shift * sig_len)
+        signal = signal.roll(shift_amt)
+
         # convert to spectrogram
         spec = torchaudio.transforms.MelSpectrogram(sample_rate=AudioUtil.sample_rate,
                                                     n_fft=AudioUtil.fft,
@@ -52,10 +58,21 @@ class AudioUtil:
                                                     n_mels=AudioUtil.n_mels)(signal)
         spec = torchaudio.transforms.AmplitudeToDB(top_db=AudioUtil.top_db)(spec)
 
-        # Add 1-channel
-        spec = spec[None, :]
+        n_mels, n_steps = spec.shape
+        mask_value = spec.mean()
+        aug_spec = spec
 
-        return spec
+        freq_mask_param = AudioUtil.max_mask_pct * n_mels
+        time_mask_param = AudioUtil.max_mask_pct * n_steps
+
+        aug_spec = aug_spec[None, :]
+        aug_spec = torchaudio.transforms.FrequencyMasking(freq_mask_param)(aug_spec, mask_value)
+        aug_spec = torchaudio.transforms.TimeMasking(time_mask_param)(aug_spec, mask_value)
+
+        # Add 1-channel
+        # spec = spec[None, :]
+
+        return aug_spec
 
 
 @ray.remote
@@ -144,7 +161,8 @@ class AudioDataset(Dataset):
                                     audio_directory,
                                     save_directory,
                                     replace=False)
-            print('Data prepared in:', time.time() - t)
+            self.data = self.data.squeeze()
+            print('Data prepared in:', time.time() - t, len(self.data))
 
             assert len(self.data) == len(df)
 
