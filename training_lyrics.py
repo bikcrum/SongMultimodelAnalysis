@@ -1,4 +1,7 @@
 import os
+import re
+import string
+import sys
 import time
 
 import pandas as pd
@@ -6,15 +9,28 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer, BertModel
+from torch.utils.tensorboard import SummaryWriter
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification, \
+    DistilBertModel
+
+
+def clean_text(text):
+    text = text.replace('\r', '').replace('\n', ' ').replace('\n', ' ').lower()  # remove \n and \r and lowercase
+    text = re.sub(r"(?:\@|https?\://)\S+", "", text)  # remove links and mentions
+    text = re.sub(r'[^\x00-\x7f]', r'', text)  # remove non utf8/ascii characters such as '\x9a\x91\x97\x9a\x97'
+    banned_list = string.punctuation + 'Ã' + '±' + 'ã' + '¼' + 'â' + '»' + '§'
+    table = str.maketrans('', '', banned_list)
+    text = text.translate(table)
+    return text
 
 
 class LyricsDataset(Dataset):
     def __init__(self, df, tokenizer):
         self.lyrics = df['lyrics'].tolist()
+        self.lyrics = list(map(clean_text, self.lyrics))
         self.lyrics = [tokenizer(lyric,
                                  padding='max_length',
-                                 max_length=64,
+                                 max_length=512,
                                  truncation=True,
                                  return_tensors="pt") for lyric in self.lyrics]
 
@@ -32,13 +48,13 @@ class LyricsDataset(Dataset):
 class LyricsNet(nn.Module):
     def __init__(self, dropout=0.5):
         super(LyricsNet, self).__init__()
-        self.bert = BertModel.from_pretrained('bert-base-cased')
+        self.bert = DistilBertModel.from_pretrained('distilbert-base-uncased')
         self.dropout = nn.Dropout(dropout)
         self.linear = nn.Linear(768, out_features=4)
 
     def forward(self, input_id, mask):
-        _, out = self.bert(input_ids=input_id, attention_mask=mask, return_dict=False)
-        out = self.dropout(out)
+        out = self.bert(input_ids=input_id, attention_mask=mask, return_dict=False)
+        out = self.dropout(out[0][:, -1, :])
         out = self.linear(out)
         out = F.relu(out)
         return out
@@ -59,30 +75,37 @@ def main():
 
     print(f"Using device: {device}")
 
-    # storage_dir = '/nfs/stak/users/panditb/storage/workspace/SongMultimodelAnalysis/dataset'
-    storage_dir = '../dataset'
-    df = pd.read_csv(os.path.join(storage_dir, 'dataset.csv'))
+    storage_dir = sys.argv[1] if len(sys.argv) > 1 else ''
+
+    writer = SummaryWriter()
+
+    df = pd.read_csv(os.path.join(storage_dir, 'dataset.csv'), encoding='ISO-8859-1')
     df = df.merge(pd.read_csv(os.path.join(storage_dir, 'lyrics.csv')), on='dzr_sng_id')
+    df = df.sample(frac=1)
 
-    df = df[:2000]
+    # df = df[:1000]
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 
     size = len(df)
     df_train = df[:int(size * 0.8)]
     df_val = df[int(size * 0.8):]
 
+    print(f'Train data: {len(df_train)}')
+    print(f'Val data: {len(df_val)}')
+
     train_data = LyricsDataset(df_train, tokenizer)
     val_data = LyricsDataset(df_val, tokenizer)
 
-    train_loader = DataLoader(train_data, batch_size=2, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=2)
+    train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+    val_loader = DataLoader(val_data, batch_size=32)
 
     # Build model
-    model = LyricsNet()
+    # model = LyricsNet()
+    model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=4)
 
     optimizer = torch.optim.Adam(model.parameters(),
-                                 lr=1e-6)
+                                 lr=2e-5, weight_decay=0.01)
     criterion = torch.nn.CrossEntropyLoss()
 
     model = model.to(device)
@@ -93,7 +116,7 @@ def main():
     val_loss_log = []
     max_acc_so_far = -1
 
-    for i in range(100):
+    for i in range(50):
 
         # Run an epoch of training
         train_running_loss = 0
@@ -103,7 +126,8 @@ def main():
             x = input[0]['input_ids'].squeeze(1).to(device)
             mask = input[0]['attention_mask'].to(device)
             y = input[1].to(device)
-            out = model.forward(x, mask)
+            # out = model(x, mask)
+            out = model(input_ids=x, attention_mask=mask, return_dict=False)[0]
             loss = criterion(out, y)
 
             model.zero_grad()
@@ -131,9 +155,8 @@ def main():
             x = input[0]['input_ids'].squeeze(1).to(device)
             mask = input[0]['attention_mask'].to(device)
             y = input[1].to(device)
-
-            out = model(x, mask)
-
+            out = model(input_ids=x, attention_mask=mask, return_dict=False)[0]
+            # out = model(x, mask)
             loss = criterion(out, y)
             _, predicted = torch.max(out.data, 1)
             correct = (predicted == y).sum()
@@ -154,6 +177,18 @@ def main():
                 val_loss,
                 train_running_acc * 100,
                 val_acc * 100))
+
+        # Write results to tensorboard
+        writer.add_scalar('Accuracy/train', train_running_acc * 100, i)
+        writer.add_scalar('Accuracy/validation', val_acc * 100, i)
+        writer.add_scalar('Loss/train', train_running_loss, i)
+        writer.add_scalar('Loss/validation', val_loss, i)
+
+        for name, weight in model.named_parameters():
+            writer.add_histogram(name, weight, i)
+            writer.add_histogram(f'{name}.grad', weight.grad, i)
+
+    writer.close()
 
 
 if __name__ == '__main__':
