@@ -2,7 +2,8 @@
 venv
 .venv2
 .ipynb_checkpoints
-dataset
+dataset/*
+!dataset/*.csv
 runs*
 saved_models
 tf-checkpoints
