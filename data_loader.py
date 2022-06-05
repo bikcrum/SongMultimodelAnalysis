@@ -28,21 +28,6 @@ def plot_cluster(dataset, features, class_label, class_names):
         plt.scatter(points[:, 0], points[:, 1])
         legend.append(class_names[group.iloc[0][class_label]])
 
-        # hull = ConvexHull(points)
-        #
-        # x_hull = np.append(points[hull.vertices, 0],
-        #                    points[hull.vertices, 0][0])
-        # y_hull = np.append(points[hull.vertices, 1],
-        #                    points[hull.vertices, 1][0])
-        #
-        # dist = np.sqrt((x_hull[:-1] - x_hull[1:]) ** 2 + (y_hull[:-1] - y_hull[1:]) ** 2)
-        # dist_along = np.concatenate(([0], dist.cumsum()))
-        # spline, _ = interpolate.splprep([x_hull, y_hull], u=dist_along, s=0)
-        # interp_d = np.linspace(dist_along[0], dist_along[-1], 50)
-        # interp_x, interp_y = interpolate.splev(interp_d, spline)
-        #
-        # plt.plot(interp_x, interp_y, '-')
-
     plt.legend(legend)
     plt.xlabel('Valance')
     plt.ylabel('Arousal')
@@ -99,50 +84,41 @@ def split_data(dataset, shuffle=False, splits=None, show_result=False):
 
 def get_data_loader(validation_split=0.2,
                     test_split=0.1,
-                    num_classes=4,
                     batch_size=256,
                     classes_name=None,
                     dataset_dir=''):
-    dataset = pd.read_csv(os.path.join(dataset_dir, 'dataset.csv'))
-    target_label = 'label'
+    df = pd.read_csv(os.path.join(dataset_dir, 'dataset.csv'))
+
+    # Merge lyrics dataset
+    df_lyrics = pd.read_csv(os.path.join(dataset_dir, 'cache/lyrics-cleaned.csv'))
+
+    assert len(df) == len(df_lyrics)
+
+    df = df.merge(df_lyrics, on='dzr_sng_id')[:1000]
+
+    # Add file path
+    df['file_path'] = df.dzr_sng_id.apply(lambda song_id: os.path.join(dataset_dir, f'cache/specs/{song_id}.npy'))
 
     # dataset['label'] = create_cluster(dataset, 4, ['valence', 'arousal'])
     # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
 
-    plot_cluster(dataset, ['valence', 'arousal'], target_label, classes_name)
+    # plot_cluster(df, features=['valence', 'arousal'],
+    #              class_label='label',
+    #              class_names=classes_name)
 
-    dataset = shuffle(dataset)
+    df = shuffle(df)
 
-    train_split, val_split, test_split = split_data(dataset,
-                                                    splits=[validation_split, test_split],
-                                                    show_result=False)
+    df_train, df_val, df_test = split_data(df,
+                                           splits=[validation_split, test_split],
+                                           show_result=False)
+    train_data = AudioDataset(df=df_train)
 
-    # train_split = balance_data(train_split, target_label)
-    # val_split = balance_data(val_split, target_label)
-    # test_split = balance_data(test_split, target_label)
+    val_data = AudioDataset(df=df_val)
 
-    train_data = AudioDataset(df=train_split,
-                              feature_label='dzr_sng_id',
-                              target_label=target_label,
-                              audio_directory=os.path.join(dataset_dir, 'previews/wav'),
-                              preload=True,
-                              transform=None)
-
-    val_data = AudioDataset(df=val_split,
-                            feature_label='dzr_sng_id',
-                            target_label=target_label,
-                            audio_directory=os.path.join(dataset_dir, 'previews/wav'),
-                            preload=True,
-                            transform=None)
-
-    test_data = AudioDataset(df=test_split,
-                             feature_label='dzr_sng_id',
-                             target_label=target_label,
-                             audio_directory=os.path.join(dataset_dir, 'previews/wav'),
-                             preload=True,
-                             transform=None)
+    test_data = AudioDataset(df=df_test)
 
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader, test_data
+    return train_loader, val_loader, test_loader
