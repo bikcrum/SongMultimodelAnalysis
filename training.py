@@ -2,43 +2,11 @@ import os
 import sys
 import time
 
-import numpy as np
 import torch
-import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from data_loader import get_data_loader
-
-
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-
-        # 1-channel
-        self.feature_extractor = nn.Sequential(
-            nn.Conv1d(64, 32, kernel_size=3),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(4),
-
-            nn.Conv1d(32, 16, kernel_size=3),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(4),
-        )
-
-        x = self.feature_extractor(torch.rand(64, 1292))
-        in_features = np.prod(x.shape)
-        print(f'Calculated in_features={in_features}')
-
-        self.classifier = nn.Sequential(
-            nn.Linear(in_features=in_features, out_features=4),
-            nn.Sigmoid()
-        )
-
-    def forward(self, spec, lyric):
-        out = self.feature_extractor(spec)
-        out = out.view(out.size(0), -1)
-        out = self.classifier(out)
-        return out
+from network import MultiNet
 
 
 def main():
@@ -61,10 +29,11 @@ def main():
     writer = SummaryWriter()
 
     # Hyperparameters
-    validation_split = 0.1
-    batch_size = 64
-    learning_rate = 1e-4
-    weight_decay = 0.03
+    validation_split = 0.2
+    test_split = 0
+    batch_size = 32
+    learning_rate = 3e-4
+    weight_decay = 0.003
 
     # Warning: Re-clustering might change the order of classes
     classes_name = {0: 'HV-LA',
@@ -72,23 +41,15 @@ def main():
                     2: 'LV-LA',
                     3: 'LV-HA'}
 
-    train_loader, val_loader, _ = get_data_loader(validation_split=validation_split,
-                                                  test_split=0,
-                                                  batch_size=batch_size,
-                                                  classes_name=classes_name,
-                                                  dataset_dir=dataset_dir)
+    train_loader, val_loader, _, vocab = get_data_loader(validation_split=validation_split,
+                                                         test_split=test_split,
+                                                         batch_size=batch_size,
+                                                         classes_name=classes_name,
+                                                         dataset_dir=dataset_dir)
 
     # Build model
-    model = Net()
-
-    # model = resnet34(pretrained=True)
-    # model.fc = nn.Linear(512, 50)
-    # model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
-
-    # Load saved models
-    # model.load_state_dict(torch.load(
-    #     os.path.join('saved_models', 'model-1653693254.657536.pt'),
-    #     map_location=device))
+    model = MultiNet(nets='al', vocab_size=len(vocab))
+    # model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=4)
 
     # Init optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(),
@@ -96,6 +57,7 @@ def main():
                                  weight_decay=weight_decay)
     criterion = torch.nn.CrossEntropyLoss()
 
+    # model = model.to(device)
     model = model.to(device)
 
     loss_log = []
@@ -114,11 +76,13 @@ def main():
         train_running_loss = 0
         train_running_acc = 0
         model.train()
-        for j, input in enumerate(train_loader, 0):
-            spec, lyric, label = input
+        for j, (spec, lyric, label) in enumerate(train_loader, 0):
             spec, lyric, label = spec.to(device), lyric.to(device), label.to(device)
 
             out = model(spec, lyric)
+            # out = model(input_ids=lyric['input_ids'].squeeze(1),
+            #             attention_mask=lyric['attention_mask'],
+            #             return_dict=False)[0]
 
             loss = criterion(out, label)
 
@@ -148,6 +112,9 @@ def main():
             spec, lyric, label = spec.to(device), lyric.to(device), label.to(device)
 
             out = model(spec, lyric)
+            # out = model(input_ids=lyric['input_ids'].squeeze(1),
+            #             attention_mask=lyric['attention_mask'],
+            #             return_dict=False)[0]
 
             loss = criterion(out, label)
             _, predicted = torch.max(out.data, 1)
@@ -181,9 +148,9 @@ def main():
         writer.add_scalar('Loss/train', train_running_loss, i)
         writer.add_scalar('Loss/validation', val_loss, i)
 
-        for name, weight in model.named_parameters():
-            writer.add_histogram(name, weight, i)
-            writer.add_histogram(f'{name}.grad', weight.grad, i)
+        # for name, weight in model.named_parameters():
+        #     writer.add_histogram(name, weight, i)
+        #     writer.add_histogram(f'{name}.grad', weight.grad, i)
 
     writer.close()
 

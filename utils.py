@@ -132,14 +132,14 @@ class LyricsUtil:
         phrase = phrase.strip()
 
         # Remove stop words like a, and, the
-        phrase = [word for word in phrase.split(' ') if word not in stopwords.words('english')]
+        # phrase = ' '.join([word for word in phrase.split(' ') if word not in stopwords.words('english')])
 
         # Lemmanize words, eg plural to singular form, past to present form
         lemmatizer = WordNetLemmatizer()
-        phrase = [lemmatizer.lemmatize(word) for word in phrase]
+        phrase = ' '.join([lemmatizer.lemmatize(word) for word in phrase.split(' ')])
 
         # Remove duplicate but preserve order
-        phrase = ' '.join(OrderedDict.fromkeys(phrase))
+        # phrase = ' '.join(OrderedDict.fromkeys(phrase.split(' ')))
 
         return phrase
 

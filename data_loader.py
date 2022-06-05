@@ -6,8 +6,10 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.utils import shuffle
 from torch.utils.data import DataLoader
-
+from torch.nn.utils.rnn import pad_sequence
 from custom_dataset import AudioDataset
+import torchtext
+import torch
 
 
 def create_cluster(dataset, num_clusters, features):
@@ -82,6 +84,16 @@ def split_data(dataset, shuffle=False, splits=None, show_result=False):
     return datasets
 
 
+def pad_collate(batch, pad_value):
+    (specs, lyrics, labels) = zip(*batch)
+
+    padded_lyrics = pad_sequence(lyrics, padding_value=pad_value)
+
+    specs, padded_lyrics, labels = torch.stack(specs), padded_lyrics.T, torch.tensor(labels)
+
+    return specs, padded_lyrics, labels
+
+
 def get_data_loader(validation_split=0.2,
                     test_split=0.1,
                     batch_size=256,
@@ -111,14 +123,32 @@ def get_data_loader(validation_split=0.2,
     df_train, df_val, df_test = split_data(df,
                                            splits=[validation_split, test_split],
                                            show_result=False)
-    train_data = AudioDataset(df=df_train)
 
-    val_data = AudioDataset(df=df_val)
+    # Build vocab from training set for lyrics
+    vocab = torchtext.vocab.build_vocab_from_iterator([df_train.lyrics.str.cat().split(' ')],
+                                                      specials=["<unk>", "<pad>"])
+    vocab.set_default_index(vocab['<unk>'])
+    pad_value = vocab["<pad>"]
 
-    test_data = AudioDataset(df=df_test)
+    val_data = AudioDataset(df=df_val, vocab=vocab)
 
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    train_data = AudioDataset(df=df_train, vocab=vocab)
 
-    return train_loader, val_loader, test_loader
+    test_data = AudioDataset(df=df_test, vocab=vocab)
+
+    train_loader = DataLoader(train_data,
+                              batch_size=batch_size,
+                              shuffle=True,
+                              collate_fn=lambda batch: pad_collate(batch, pad_value))
+
+    val_loader = DataLoader(val_data,
+                            batch_size=batch_size,
+                            shuffle=False,
+                            collate_fn=lambda batch: pad_collate(batch, pad_value))
+
+    test_loader = DataLoader(test_data,
+                             batch_size=batch_size,
+                             shuffle=False,
+                             collate_fn=lambda batch: pad_collate(batch, pad_value))
+
+    return train_loader, val_loader, test_loader, vocab

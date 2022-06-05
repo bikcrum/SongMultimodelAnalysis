@@ -2,18 +2,22 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from transformers import DistilBertTokenizer
+import torchtext
+from torch.nn.utils.rnn import pad_sequence
 
 
 class AudioDataset(Dataset):
 
-    def __init__(self, df, transform=None):
+    def __init__(self, df, vocab, transform=None):
         super().__init__()
 
         self.df = df.copy()
 
         self.transform = transform
 
-        tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        self.vocab = vocab
+
+        # tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 
         self.specs = []
         self.lyrics = []
@@ -21,18 +25,17 @@ class AudioDataset(Dataset):
         for i, row in df.iterrows():
             spec = np.load(f'{row.file_path}')
             self.specs.append(spec)
-
-            lyric = tokenizer(row.lyrics,
-                              padding='max_length',
-                              # 60 because of mean words count in lyrics
-                              max_length=60,
-                              truncation=True,
-                              return_tensors="pt")
-
-            self.lyrics.append(lyric)
+            #
+            # lyric = tokenizer(row.lyrics,
+            #                   padding='max_length',
+            #                   # 60 because of mean words count in lyrics
+            #                   max_length=256,
+            #                   truncation=True,
+            #                   return_tensors="pt")
+            #
+            self.lyrics.append(torch.tensor(vocab.lookup_indices(row.lyrics.split(' '))))
 
         self.specs = np.array(self.specs)
-
         self.specs = self.specs.squeeze()
 
     def __len__(self):
