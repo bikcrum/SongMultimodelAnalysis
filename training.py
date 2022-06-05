@@ -145,9 +145,8 @@ def main():
         heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=0, ha='center', fontsize=15)
         plt.ylabel('True class')
         plt.xlabel('Predicted class')
-        # plt.show()
 
-        writer.add_figure("Confusion matrix", plt.gcf())
+        writer.add_figure("Confusion matrix", plt.gcf(), global_step=i)
 
         # Save models
         if val_acc > max_acc_so_far:
