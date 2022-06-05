@@ -25,6 +25,8 @@ def main():
     print(f"Using device: {device}")
 
     dataset_dir = sys.argv[1] if len(sys.argv) > 1 else ''
+    nets = sys.argv[2] if len(sys.argv) > 2 else 'al'
+    # 'a' stands for audio and 'l' stand for lyrics
 
     writer = SummaryWriter()
 
@@ -48,7 +50,7 @@ def main():
                                                          dataset_dir=dataset_dir)
 
     # Build model
-    model = MultiNet(nets='al', vocab_size=len(vocab))
+    model = MultiNet(nets=nets, vocab_size=len(vocab))
     # model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=4)
 
     # Init optimizer and loss function
