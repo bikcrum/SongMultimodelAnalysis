@@ -94,7 +94,7 @@ def get_data_loader(validation_split=0.2,
 
     assert len(df) == len(df_lyrics)
 
-    df = df.merge(df_lyrics, on='dzr_sng_id')[:1000]
+    df = df.merge(df_lyrics, on='dzr_sng_id')
 
     # Add file path
     df['file_path'] = df.dzr_sng_id.apply(lambda song_id: os.path.join(dataset_dir, f'cache/specs/{song_id}.npy'))
