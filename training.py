@@ -132,7 +132,7 @@ def main():
             val_loss += loss.item()
 
             for t, p in zip(label, predicted):
-                confusion_matrix[t.long(), p.long()] += 1
+                confusion_matrix[t, p] += 1
 
         val_acc /= len(val_loader.dataset)
         val_loss /= j
