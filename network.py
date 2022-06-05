@@ -106,6 +106,9 @@ class MultiNet(nn.Module):
             self.lyric_net = LyricNet(vocab_size=vocab_size)
             num_features += self.lyric_net.compute_flat_feature(input_shape)
 
+        print(f'Received nets:{nets}')
+        print(f'Total flat features:{num_features}')
+
         self.classifier = nn.Sequential(
             nn.Linear(in_features=num_features, out_features=128),
             nn.Linear(in_features=128, out_features=4)

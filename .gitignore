@@ -3,7 +3,7 @@ venv
 .venv2
 .ipynb_checkpoints
 dataset
-runs
+runs*
 saved_models
 tf-checkpoints
 tf-logs

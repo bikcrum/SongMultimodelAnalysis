@@ -1,12 +1,17 @@
+import io
 import os
 import sys
 import time
 
+import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from data_loader import get_data_loader
 from network import MultiNet
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def main():
@@ -108,6 +113,7 @@ def main():
         # Evaluate on validation
         val_acc = 0
         val_loss = 0
+        confusion_matrix = np.zeros((4, 4))
         model.eval()
         for j, input in enumerate(val_loader, 0):
             spec, lyric, label = input
@@ -125,8 +131,23 @@ def main():
             val_acc += correct.item()
             val_loss += loss.item()
 
+            for t, p in zip(label, predicted):
+                confusion_matrix[t.long(), p.long()] += 1
+
         val_acc /= len(val_loader.dataset)
         val_loss /= j
+
+        _, labels = zip(*sorted(classes_name.items(), key=lambda x: x[0]))
+        df_cm = pd.DataFrame(confusion_matrix, index=labels, columns=labels).astype(int)
+        heatmap = sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
+
+        heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=90, ha='right', fontsize=15)
+        heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=0, ha='center', fontsize=15)
+        plt.ylabel('True class')
+        plt.xlabel('Predicted class')
+        # plt.show()
+
+        writer.add_figure("Confusion matrix", plt.gcf())
 
         # Save models
         if val_acc > max_acc_so_far:
