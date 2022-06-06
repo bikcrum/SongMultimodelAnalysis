@@ -11,3 +11,5 @@ tf-logs
 experiments
 tests
 scripts
+.DS_Store
+__pycache__/
