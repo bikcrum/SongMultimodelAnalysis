@@ -36,7 +36,7 @@ class AudioDataset(Dataset):
             self.lyrics.append(torch.tensor(vocab.lookup_indices(row.lyrics.split(' '))))
 
         self.specs = np.array(self.specs)
-        self.specs = self.specs.squeeze()
+        # self.specs = self.specs.squeeze()
 
     def __len__(self):
         return len(self.df)

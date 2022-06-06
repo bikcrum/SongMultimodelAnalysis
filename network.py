@@ -11,13 +11,17 @@ class AudioNet(nn.Module):
         super(AudioNet, self).__init__()
 
         self.layers = nn.Sequential(
-            nn.Conv1d(64, 32, kernel_size=3),
+            nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=4),
+            nn.MaxPool2d(kernel_size=(4,4)),
 
-            nn.Conv1d(32, 16, kernel_size=3),
+            nn.Conv2d(64, 32, kernel_size=(3, 3), stride=(1, 1), padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=4),
+            nn.MaxPool2d(kernel_size=(4,4)),
+
+            nn.Conv2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=(4,4)),
         )
 
     def compute_flat_feature(self, shape):
@@ -94,7 +98,7 @@ class MultiNet(nn.Module):
         super(MultiNet, self).__init__()
 
         num_features = 0
-        input_shape = (64, 1292)
+        input_shape = (1, 64, 1292)
 
         self.nets = nets
 
