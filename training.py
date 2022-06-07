@@ -33,7 +33,7 @@ def main():
     nets = sys.argv[2] if len(sys.argv) > 2 else 'al'
     # 'a' stands for audio and 'l' stand for lyrics
 
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir=os.path.join(dataset_dir, 'runs'))
 
     # Hyperparameters
     hparams = {
