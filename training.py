@@ -60,19 +60,20 @@ def main():
     model = MultiNet(nets=nets, vocab_size=len(vocab))
     # model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=4)
 
+    # Load pretrained model
+    # model.load_state_dict(torch.load(os.path.join(dataset_dir, 'saved_models/model-1654583400.2823615(best).pt'),
+    #                                  map_location=torch.device('cpu')))
+
     # Init optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=hparams['learning_rate'],
                                  weight_decay=hparams['weight_decay'])
     criterion = torch.nn.CrossEntropyLoss()
 
-    # model = model.to(device)
     model = model.to(device)
 
-    # model.load_state_dict(torch.load(os.path.join(dataset_dir, 'saved_models/model-1654583400.2823615.pt')))
-
     # Save model to tensorboard
-    model_summary = str(model).replace( '\n', '<br/>').replace(' ', '&nbsp;')
+    model_summary = str(model).replace('\n', '<br/>').replace(' ', '&nbsp;')
     writer.add_text("model", model_summary)
     writer.add_hparams(hparam_dict=hparams, metric_dict={})
 
@@ -162,7 +163,8 @@ def main():
         # Save models
         if val_acc > max_acc_so_far:
             max_acc_so_far = val_acc
-            torch.save(model.state_dict(), os.path.join(dataset_dir, f'saved_models/{train_start_time}/model-{time.time()}.pt'))
+            torch.save(model.state_dict(),
+                       os.path.join(dataset_dir, f'saved_models/{train_start_time}/model-{time.time()}.pt'))
 
         val_acc_log.append(val_acc)
         val_loss_log.append(val_loss)
