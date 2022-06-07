@@ -13,15 +13,15 @@ class AudioNet(nn.Module):
         self.layers = nn.Sequential(
             nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(4, 4)),
+            nn.AvgPool2d(kernel_size=(4, 4)),
 
             nn.Conv2d(64, 32, kernel_size=(3, 3), stride=(1, 1), padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(4, 4)),
+            nn.AvgPool2d(kernel_size=(4, 4)),
 
             nn.Conv2d(32, 16, kernel_size=(3, 3), stride=(1, 1), padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=(4, 4)),
+            nn.AvgPool2d(kernel_size=(4, 4)),
         )
 
     def compute_flat_feature(self, shape):
