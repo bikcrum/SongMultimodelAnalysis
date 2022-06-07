@@ -45,7 +45,7 @@ def main():
         'batch_size': 256,
         'learning_rate': 3e-4,
         'weight_decay': 0.003,
-        'num_epochs': 100,
+        'num_epochs': 1000,
     }
 
     # Warning: Re-clustering might change the order of classes
