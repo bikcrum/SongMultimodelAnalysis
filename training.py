@@ -2,7 +2,7 @@ import io
 import os
 import sys
 import time
-
+from datetime import datetime
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -12,6 +12,7 @@ from network import MultiNet
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import json
 
 
 def main():
@@ -29,11 +30,13 @@ def main():
 
     print(f"Using device: {device}")
 
+    train_start_time = datetime.today().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
     dataset_dir = sys.argv[1] if len(sys.argv) > 1 else ''
     nets = sys.argv[2] if len(sys.argv) > 2 else 'al'
     # 'a' stands for audio and 'l' stand for lyrics
 
-    writer = SummaryWriter(log_dir=os.path.join(dataset_dir, 'runs'))
+    writer = SummaryWriter(log_dir=os.path.join(dataset_dir, f'runs/{train_start_time}'))
 
     # Hyperparameters
     hparams = {
@@ -42,6 +45,7 @@ def main():
         'batch_size': 256,
         'learning_rate': 3e-4,
         'weight_decay': 0.003,
+        'num_epochs': 100,
     }
 
     # Warning: Re-clustering might change the order of classes
@@ -74,8 +78,12 @@ def main():
 
     # Save model to tensorboard
     model_summary = str(model).replace('\n', '<br/>').replace(' ', '&nbsp;')
-    writer.add_text("model", model_summary)
-    writer.add_hparams(hparam_dict=hparams, metric_dict={})
+    writer.add_text("model", model_summary, 0)
+
+    # Save hyperparameter to tensorboard
+    writer.add_text("hyper-parameters",
+                    json.dumps({**hparams, "optim": str(optimizer), "loss": str(criterion)}, indent=4,
+                               sort_keys=True).replace('\n', '<br/>').replace(' ', '&nbsp;'), 0)
 
     loss_log = []
     acc_log = []
@@ -83,13 +91,11 @@ def main():
     val_loss_log = []
     max_acc_so_far = -1
 
-    train_start_time = time.time()
-
     # make directory to store models
     os.makedirs(os.path.join(dataset_dir, f'saved_models/{train_start_time}'), exist_ok=True)
 
     # Main training loop
-    for i in range(100):
+    for i in range(hparams['num_epochs']):
 
         # Run an epoch of training
         train_running_loss = 0
