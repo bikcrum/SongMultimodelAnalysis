@@ -36,11 +36,13 @@ def main():
     writer = SummaryWriter()
 
     # Hyperparameters
-    validation_split = 0.2
-    test_split = 0
-    batch_size = 256
-    learning_rate = 3e-4
-    weight_decay = 0.003
+    hparams = {
+        'validation_split': 0.2,
+        'test_split': 0,
+        'batch_size': 256,
+        'learning_rate': 3e-4,
+        'weight_decay': 0.003,
+    }
 
     # Warning: Re-clustering might change the order of classes
     classes_name = {0: 'HV-LA',
@@ -48,9 +50,9 @@ def main():
                     2: 'LV-LA',
                     3: 'LV-HA'}
 
-    train_loader, val_loader, _, vocab = get_data_loader(validation_split=validation_split,
-                                                         test_split=test_split,
-                                                         batch_size=batch_size,
+    train_loader, val_loader, _, vocab = get_data_loader(validation_split=hparams['validation_split'],
+                                                         test_split=hparams['test_split'],
+                                                         batch_size=hparams['batch_size'],
                                                          classes_name=classes_name,
                                                          dataset_dir=dataset_dir)
 
@@ -60,12 +62,17 @@ def main():
 
     # Init optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(),
-                                 lr=learning_rate,
-                                 weight_decay=weight_decay)
+                                 lr=hparams['learning_rate'],
+                                 weight_decay=hparams['weight_decay'])
     criterion = torch.nn.CrossEntropyLoss()
 
     # model = model.to(device)
     model = model.to(device)
+
+    writer.add_text("model", str(model))
+    writer.add_hparams(hparam_dict=hparams,
+                       metric_dict={'loss_function': str(criterion.__repr__()),
+                                    'optimizer': str(optimizer)})
 
     loss_log = []
     acc_log = []
