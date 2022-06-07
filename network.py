@@ -5,7 +5,156 @@ from transformers import DistilBertModel
 import torchaudio
 import numpy as np
 
+class CNN(nn.Module):
+    def __init__(self, embedding_dim, vocab_size, num_filters,
+                 filter_sizes, hidden_dim, dropout_p, num_classes,
+                 pretrained_embeddings=None, freeze_embeddings=False,
+                 padding_idx=0):
+        super(CNN, self).__init__()
 
+        # Filter sizes
+        self.filter_sizes = filter_sizes
+
+        # Initialize embeddings
+        if pretrained_embeddings is None:
+            self.embeddings = nn.Embedding(
+                embedding_dim=embedding_dim, num_embeddings=vocab_size,
+                padding_idx=padding_idx)
+        else:
+            pretrained_embeddings = torch.from_numpy(pretrained_embeddings).float()
+            self.embeddings = nn.Embedding(
+                embedding_dim=embedding_dim, num_embeddings=vocab_size,
+                padding_idx=padding_idx, _weight=pretrained_embeddings)
+
+        # Freeze embeddings or not
+        if freeze_embeddings:
+            self.embeddings.weight.requires_grad = False
+
+        # Conv weights
+        self.conv = nn.ModuleList(
+            [nn.Conv1d(in_channels=embedding_dim,
+                       out_channels=num_filters,
+                       kernel_size=f) for f in filter_sizes])
+
+        # FC weights
+        self.dropout = nn.Dropout(dropout_p)
+        self.fc1 = nn.Linear(num_filters*len(filter_sizes), hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
+
+    def forward(self, inputs, channel_first=False):
+
+        # Embed
+        x_in, = inputs
+        x_in = self.embeddings(x_in)
+
+        # Rearrange input so num_channels is in dim 1 (N, C, L)
+        if not channel_first:
+            x_in = x_in.transpose(1, 2)
+
+        # Conv outputs
+        z = []
+        max_seq_len = x_in.shape[2]
+        for i, f in enumerate(self.filter_sizes):
+            # `SAME` padding
+            padding_left = int((self.conv[i].stride[0]*(max_seq_len-1) - max_seq_len + self.filter_sizes[i])/2)
+            padding_right = int(math.ceil((self.conv[i].stride[0]*(max_seq_len-1) - max_seq_len + self.filter_sizes[i])/2))
+
+            # Conv + pool
+            _z = self.conv[i](F.pad(x_in, (padding_left, padding_right)))
+            _z = F.max_pool1d(_z, _z.size(2)).squeeze(2)
+            z.append(_z)
+
+        # Concat conv outputs
+        z = torch.cat(z, 1)
+
+        # FC layers
+        z = self.fc1(z)
+        z = self.dropout(z)
+        z = self.fc2(z)
+        return z
+
+class GRU_Model(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_units, batch_sz, output_size, 
+             pretrained_embeddings, freeze_embeddings, padding_idx=0):
+        super(GRU_Model, self).__init__()
+        self.batch_sz = batch_sz
+        self.hidden_units = hidden_units
+        self.embedding_dim = embedding_dim
+        self.vocab_size = vocab_size
+        self.output_size = output_size
+
+        #initialise embeddings
+        pretrained_embeddings = torch.from_numpy(pretrained_embeddings).float()
+        self.embeddings = nn.Embedding(
+            embedding_dim=embedding_dim, num_embeddings=vocab_size,
+            padding_idx=padding_idx, _weight=pretrained_embeddings)
+        
+        # Freeze embeddings or not
+        if freeze_embeddings:
+            self.embeddings.weight.requires_grad = False
+
+        # layers
+        # self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
+        self.dropout = nn.Dropout(p=0.25)
+        self.gru = nn.GRU(self.embedding_dim, self.hidden_units, num_layers=2,bidirectional=True,batch_first=True)
+        self.fc = nn.Linear(2*self.hidden_units, self.output_size)
+
+    def initialize_hidden_state(self, device):
+        return torch.zeros((4, self.batch_sz, self.hidden_units)).to(device)
+
+    def forward(self, inputs):
+        x, = inputs
+        print(x.shape)
+        x = self.embeddings(x)
+        print(x.shape)
+        self.hidden = self.initialize_hidden_state(device)
+        output, self.hidden = self.gru(x, self.hidden) # max_len X batch_size X hidden_units
+
+        out = self.dropout(output)
+        out = output[:, -1, :] 
+        out = self.fc(out)
+        print(out.shape)
+        return out
+
+class LSTM_model(nn.Module):
+    def __init__(self, batch_sz, vocab_size, embedding_dim, output_size, pretrained_embeddings,
+                 freeze_embeddings, padding_idx=0, hidden_dim = 64) :
+        # super().__init__()
+        super(LSTM_model, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.batch_sz = batch_sz
+        self.embedding_dim = embedding_dim
+        self.vocab_size = vocab_size
+        self.output_size = output_size
+
+        #initialise embeddings
+        pretrained_embeddings = torch.from_numpy(pretrained_embeddings).float()
+        self.embeddings = nn.Embedding(
+            embedding_dim=embedding_dim, num_embeddings=vocab_size,
+            padding_idx=padding_idx, _weight=pretrained_embeddings)
+        
+        # Freeze embeddings or not
+        if freeze_embeddings:
+            self.embeddings.weight.requires_grad = False
+
+        # layers
+        self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
+        self.dropout = nn.Dropout(p=0.25)
+        self.lstm = nn.LSTM(self.embedding_dim, self.hidden_dim, batch_first=True) #x -- batch_size first
+        self.fc = nn.Linear(self.hidden_dim, self.output_size) #output -- 2 (even/odd)
+        # self.activation_func = nn.Sigmoid()
+
+    def initialize_hidden_state(self, device):
+        return torch.zeros((4, self.batch_sz, self.hidden_units)).to(device)
+
+    def forward(self, inputs):
+        # Embed
+        x_in, = inputs
+        x_in = self.embeddings(x_in)
+        lstm_output, (h, c) = self.lstm(x_in, None)
+        out = lstm_output[:, -1, :] 
+        out = self.fc(out)
+        return out
 class AudioNet(nn.Module):
     def __init__(self):
         super(AudioNet, self).__init__()
