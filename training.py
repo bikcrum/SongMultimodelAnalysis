@@ -48,17 +48,10 @@ def main():
         'num_epochs': 1000,
     }
 
-    # Warning: Re-clustering might change the order of classes
-    classes_name = {0: 'HV-LA',
-                    1: 'HV-HA',
-                    2: 'LV-LA',
-                    3: 'LV-HA'}
-
-    train_loader, val_loader, _, vocab = get_data_loader(validation_split=hparams['validation_split'],
-                                                         test_split=hparams['test_split'],
-                                                         batch_size=hparams['batch_size'],
-                                                         classes_name=classes_name,
-                                                         dataset_dir=dataset_dir)
+    train_loader, val_loader, _, classes_name, vocab = get_data_loader(validation_split=hparams['validation_split'],
+                                                                       test_split=hparams['test_split'],
+                                                                       batch_size=hparams['batch_size'],
+                                                                       dataset_dir=dataset_dir)
 
     # Build model
     model = MultiNet(nets=nets, vocab_size=len(vocab))
@@ -155,8 +148,8 @@ def main():
         val_acc /= len(val_loader.dataset)
         val_loss /= j
 
-        _, labels = zip(*sorted(classes_name.items(), key=lambda x: x[0]))
-        df_cm = pd.DataFrame(confusion_matrix, index=labels, columns=labels).astype(int)
+        classes_name_only = list(zip(*sorted(classes_name.items(), key=lambda x: x[0])))[1]
+        df_cm = pd.DataFrame(confusion_matrix, index=classes_name_only, columns=classes_name_only).astype(int)
         heatmap = sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
 
         heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=90, ha='right', fontsize=15)

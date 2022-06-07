@@ -23,17 +23,17 @@ def create_cluster(dataset, num_clusters, features):
     return clusters
 
 
-def plot_cluster(dataset, features, class_label, class_names):
+def plot_cluster(dataset, features, label, class_name):
     legend = []
-    for name, group in dataset.groupby(class_label):
+    for name, group in dataset.groupby(label):
         points = group[features].values
         plt.scatter(points[:, 0], points[:, 1])
-        legend.append(class_names[group.iloc[0][class_label]])
+        legend.append(f'({group.iloc[0][label]}){group.iloc[0][class_name]}')
 
     plt.legend(legend)
     plt.xlabel('Valance')
     plt.ylabel('Arousal')
-    plt.title(f'Valence-Arousal {len(class_names)}-clusters')
+    plt.title(f'Valence-Arousal {len(legend)}-clusters')
 
     plt.show()
 
@@ -97,32 +97,43 @@ def pad_collate(batch, pad_value):
 def get_data_loader(validation_split=0.2,
                     test_split=0.1,
                     batch_size=256,
-                    classes_name=None,
                     dataset_dir=''):
     df = pd.read_csv(os.path.join(dataset_dir, 'dataset.csv'))
 
-    # Merge lyrics dataset
     df_lyrics = pd.read_csv(os.path.join(dataset_dir, 'cache/lyrics-cleaned.csv'))
 
     assert len(df) == len(df_lyrics)
 
+    # Merge lyrics dataset
     df = df.merge(df_lyrics, on='dzr_sng_id')
+
+    # Clustering (Warning: Class order might change with re-clustering)
+    # df['label'] = create_cluster(df, 4, ['valence', 'arousal'])
+    # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
+
+    classes_name = {0: 'HV-LA',
+                    1: 'HV-HA',
+                    2: 'LV-LA',
+                    3: 'LV-HA'}
+
+    df['class_name'] = df.label.apply(lambda label: classes_name[label])
+
+    # plot_cluster(df, features=['valence', 'arousal'],
+    #              label='label',
+    #              class_name='class_name')
 
     # Add file path
     df['file_path'] = df.dzr_sng_id.apply(lambda song_id: os.path.join(dataset_dir, f'cache/specs/{song_id}.npy'))
-
-    # dataset['label'] = create_cluster(dataset, 4, ['valence', 'arousal'])
-    # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
-
-    # plot_cluster(df, features=['valence', 'arousal'],
-    #              class_label='label',
-    #              class_names=classes_name)
 
     df = shuffle(df)
 
     df_train, df_val, df_test = split_data(df,
                                            splits=[validation_split, test_split],
                                            show_result=False)
+
+    print('Training data:', df_train.groupby(['label', 'class_name']).size())
+    print('Validation data:', df_val.groupby(['label', 'class_name']).size())
+    print('Test data:', df_test.groupby(['label', 'class_name']).size())
 
     # Build vocab from training set for lyrics
     vocab = torchtext.vocab.build_vocab_from_iterator([df_train.lyrics.str.cat().split(' ')],
@@ -151,4 +162,4 @@ def get_data_loader(validation_split=0.2,
                              shuffle=False,
                              collate_fn=lambda batch: pad_collate(batch, pad_value))
 
-    return train_loader, val_loader, test_loader, vocab
+    return train_loader, val_loader, test_loader, classes_name, vocab
