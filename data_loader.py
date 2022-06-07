@@ -111,6 +111,13 @@ def get_data_loader(validation_split=0.2,
     # df['label'] = create_cluster(df, 4, ['valence', 'arousal'])
     # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
 
+    # Balance data
+    # min_data_size = df.groupby('label').size().values.min()
+    # balanced_df = []
+    # for name, group in df.groupby('label'):
+    #     balanced_df.append(group[:min_data_size])
+    # df = pd.concat(balanced_df)
+
     classes_name = {0: 'HV-LA',
                     1: 'HV-HA',
                     2: 'LV-LA',
