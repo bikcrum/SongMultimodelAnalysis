@@ -42,7 +42,7 @@ def main():
     hparams = {
         'validation_split': 0.2,
         'test_split': 0,
-        'batch_size': 256,
+        'batch_size': 128,
         'learning_rate': 3e-4,
         'weight_decay': 0.003,
         'num_epochs': 1000,
