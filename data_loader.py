@@ -3,13 +3,14 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.cluster import KMeans
 from sklearn.utils import shuffle
-from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
+from torchtext.vocab import GloVe, vocab
+
 from custom_dataset import AudioDataset
-import torchtext
-import torch
 
 
 def create_cluster(dataset, num_clusters, features):
@@ -143,16 +144,35 @@ def get_data_loader(validation_split=0.2,
     print('Test data:', df_test.groupby(['label', 'class_name']).size())
 
     # Build vocab from training set for lyrics
-    vocab = torchtext.vocab.build_vocab_from_iterator([df_train.lyrics.str.cat().split(' ')],
-                                                      specials=["<unk>", "<pad>"])
-    vocab.set_default_index(vocab['<unk>'])
-    pad_value = vocab["<pad>"]
+    # vocab = torchtext.vocab.build_vocab_from_iterator([df_train.lyrics.str.cat().split(' ')],
+    #                                                   specials=["<unk>", "<pad>"])
+    # vocab.set_default_index(vocab['<unk>'])
+    # pad_value = vocab["<pad>"]
 
-    val_data = AudioDataset(df=df_val, vocab=vocab)
+    glove = GloVe(name="6B", dim=200, max_vectors=10000)
 
-    train_data = AudioDataset(df=df_train, vocab=vocab)
+    _vocab = vocab(glove.stoi)
+    _vocab.insert_token('<unk>', 0)
+    _vocab.insert_token('<pad>', 1)
+    _vocab.set_default_index(0)
 
-    test_data = AudioDataset(df=df_test, vocab=vocab)
+    # TEXT = Field(
+    #     lower=True, include_lengths=False, batch_first=True
+    # )
+    # TEXT.build_vocab(
+    #     [row.lyrics.split(' ') for i, row in df.iterrows()],
+    #     vectors=glove,
+    #     max_size=50_000,
+    #     specials=['<unk>', '<pad>']
+    # )
+
+    pad_value = _vocab['<pad>']
+
+    val_data = AudioDataset(df=df_val, vocab=_vocab)
+
+    train_data = AudioDataset(df=df_train, vocab=_vocab)
+
+    test_data = AudioDataset(df=df_test, vocab=_vocab)
 
     train_loader = DataLoader(train_data,
                               batch_size=batch_size,
@@ -169,4 +189,4 @@ def get_data_loader(validation_split=0.2,
                              shuffle=False,
                              collate_fn=lambda batch: pad_collate(batch, pad_value))
 
-    return train_loader, val_loader, test_loader, classes_name, vocab
+    return train_loader, val_loader, test_loader, classes_name, _vocab, glove.vectors

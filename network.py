@@ -1,9 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from transformers import DistilBertModel
-import torchaudio
-import numpy as np
 
 
 class AudioNet(nn.Module):
@@ -36,33 +33,36 @@ class AudioNet(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout, max_length=5000):
-        super(PositionalEncoding, self).__init__()
 
-        pos = torch.arange(0, max_length).unsqueeze(1)
-        pos_encoding = torch.zeros((max_length, d_model))
+    def __init__(self, d_model, vocab_size=5000, dropout=0.1):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
 
-        sin_den = 10000 ** (torch.arange(0, d_model, 2) / d_model)
-        cos_den = 10000 ** (torch.arange(1, d_model, 2) / d_model)
+        pe = torch.zeros(vocab_size, d_model)
+        position = torch.arange(0, vocab_size, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float()
+            * (-np.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
 
-        pos_encoding[:, 0::2] = torch.sin(pos / sin_den)
-        pos_encoding[:, 1::2] = torch.cos(pos / cos_den)
-
-        pos_encoding = pos_encoding.unsqueeze(-2)
-
-        self.dropout = nn.Dropout(dropout)
-
-        self.register_buffer('pos_encoding', pos_encoding)
-
-    def forward(self, token_embedding):
-        return self.dropout(token_embedding + self.pos_encoding[:token_embedding.size(0), :])
+    def forward(self, x):
+        x = x + self.pe[:, : x.size(1), :]
+        return self.dropout(x)
 
 
 class InputEmbedding(nn.Module):
-    def __init__(self, vocab_size, d_model):
+    def __init__(self, vocab_size, d_model, embeddings=None):
         super(InputEmbedding, self).__init__()
 
+        if embeddings is not None:
+            self.embedding = nn.Embedding.from_pretrained(embeddings, freeze=False)
+
         self.embedding = nn.Embedding(vocab_size, d_model)
+
         self.d_model = d_model
 
     def forward(self, tokens):
@@ -71,18 +71,25 @@ class InputEmbedding(nn.Module):
 
 
 class LyricNet(nn.Module):
-    def __init__(self, vocab_size):
+    def __init__(self, vocab_size, embeddings=None):
         super(LyricNet, self).__init__()
-        self.embedding = InputEmbedding(vocab_size=vocab_size, d_model=512)
 
-        self.positional_encoding = PositionalEncoding(d_model=512, dropout=0.1)
+        if embeddings is not None:
+            vocab_size, d_model = embeddings.size()
+            self.d_model = d_model
+        else:
+            self.d_model = 512
 
-        encoder_layers = nn.TransformerEncoderLayer(d_model=512, nhead=8, dim_feedforward=128, dropout=0.1)
+        self.embedding = InputEmbedding(vocab_size=vocab_size, d_model=self.d_model, embeddings=embeddings)
+
+        self.positional_encoding = PositionalEncoding(d_model=self.d_model, dropout=0.1, vocab_size=vocab_size)
+
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=5, dim_feedforward=128, dropout=0.1)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
 
     def compute_flat_feature(self, shape):
         # d_model
-        return 512
+        return self.d_model
 
     def forward(self, lyric):
         embedding = self.positional_encoding(self.embedding(lyric))
@@ -94,7 +101,7 @@ class LyricNet(nn.Module):
 
 
 class MultiNet(nn.Module):
-    def __init__(self, nets='al', vocab_size=None):
+    def __init__(self, nets='al', vocab_size=None, embeddings=None):
         super(MultiNet, self).__init__()
 
         num_features = 0
@@ -107,7 +114,7 @@ class MultiNet(nn.Module):
             num_features += self.audio_net.compute_flat_feature(input_shape)
 
         if 'l' in nets:
-            self.lyric_net = LyricNet(vocab_size=vocab_size)
+            self.lyric_net = LyricNet(vocab_size=vocab_size, embeddings=embeddings)
             num_features += self.lyric_net.compute_flat_feature(input_shape)
 
         print(f'Received nets:{nets}')

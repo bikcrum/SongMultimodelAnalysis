@@ -13,3 +13,4 @@ tests
 scripts
 .DS_Store
 __pycache__/
+.vector_cache

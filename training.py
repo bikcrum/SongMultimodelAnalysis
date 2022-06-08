@@ -1,18 +1,18 @@
-import io
+import json
 import os
 import sys
 import time
 from datetime import datetime
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from data_loader import get_data_loader
 from network import MultiNet
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-import json
 
 
 def main():
@@ -42,19 +42,20 @@ def main():
     hparams = {
         'validation_split': 0.2,
         'test_split': 0,
-        'batch_size': 256,
+        'batch_size': 32,
         'learning_rate': 3e-4,
         'weight_decay': 0.003,
         'num_epochs': 1000,
     }
 
-    train_loader, val_loader, _, classes_name, vocab = get_data_loader(validation_split=hparams['validation_split'],
-                                                                       test_split=hparams['test_split'],
-                                                                       batch_size=hparams['batch_size'],
-                                                                       dataset_dir=dataset_dir)
+    train_loader, val_loader, _, classes_name, vocab, embeddings = get_data_loader(
+        validation_split=hparams['validation_split'],
+        test_split=hparams['test_split'],
+        batch_size=hparams['batch_size'],
+        dataset_dir=dataset_dir)
 
     # Build model
-    model = MultiNet(nets=nets, vocab_size=len(vocab))
+    model = MultiNet(nets=nets, vocab_size=len(vocab), embeddings=embeddings)
     # model = DistilBertForSequenceClassification.from_pretrained('distilbert-base-uncased', num_labels=4)
 
     # Load pretrained model
