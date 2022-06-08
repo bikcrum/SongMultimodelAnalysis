@@ -1,15 +1,21 @@
 import itertools
+import os
 import re
-from collections import OrderedDict
-
+import json
 import numpy as np
 import ray
 import torch
 import torchaudio
-from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+import pandas as pd
+from tqdm import tqdm
 
 ray.init(ignore_reinit_error=True, num_cpus=10)
+
+CREDENTIAL_FILE = 'keys/subtle-torus-351503-52f29cb97786.json'
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = CREDENTIAL_FILE
+
+from google.cloud import translate_v2
 
 
 class AudioUtil:
@@ -170,3 +176,55 @@ class LyricsUtil:
         lyrics = list(itertools.chain.from_iterable(lyrics_list))
 
         return lyrics
+
+    @staticmethod
+    def back_translation(df, target=None):
+        def translate(values, source, target):
+            batch_size = 32
+            translations_list = []
+            print(f"Translation {source}->{target}")
+            for i in tqdm(range(0, len(values), batch_size)):
+                translations = client.translate(
+                    values=values[i:i + batch_size],
+                    format_='text',
+                    source_language=source,
+                    target_language=target)
+
+                translations_list.append(translations)
+
+            translations = list(itertools.chain.from_iterable(translations_list))
+
+            translations = list(map(lambda tx: tx['translatedText'], translations))
+
+            return translations
+
+        _df = df.copy()
+
+        client = translate_v2.Client()
+
+        languages = client.get_languages()
+
+        values = _df.lyrics.to_list()
+
+        source = client.detect_language(values=values[0])
+
+        languages = list(filter(lambda lang: source['language'] != lang['language'], languages))
+
+        if target is None:
+            target = np.random.choice(languages)['language']
+        else:
+            assert np.any(list(filter(lambda lang: target == lang['language'],
+                                      languages))), pd.DataFrame(languages)
+
+        translations = translate(values=values,
+                                 source=source['language'],
+                                 target=target)
+
+        translations = translate(values=translations,
+                                 source=target,
+                                 target=source['language'])
+
+        _df['lyrics'] = translations
+        _df.lyrics = _df.lyrics.str.lower()
+
+        return _df
