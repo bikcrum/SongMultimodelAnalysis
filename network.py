@@ -84,7 +84,7 @@ class LyricNet(nn.Module):
 
         self.positional_encoding = PositionalEncoding(d_model=self.d_model, dropout=0.1, vocab_size=vocab_size)
 
-        encoder_layers = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=5, dim_feedforward=128, dropout=0.1)
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=10, dim_feedforward=128, dropout=0.1)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=3)
 
     def compute_flat_feature(self, shape):
