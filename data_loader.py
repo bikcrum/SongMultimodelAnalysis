@@ -119,12 +119,12 @@ def get_data_loader(validation_split=0.2,
     #     balanced_df.append(group[:min_data_size])
     # df = pd.concat(balanced_df)
 
-    classes_name = {0: 'HV-LA',
-                    1: 'HV-HA',
-                    2: 'LV-LA',
-                    3: 'LV-HA'}
-
-    df['class_name'] = df.label.apply(lambda label: classes_name[label])
+    # classes_name = {0: 'HV-LA',
+    #                 1: 'HV-HA',
+    #                 2: 'LV-LA',
+    #                 3: 'LV-HA'}
+    #
+    # df['class_name'] = df.label.apply(lambda label: classes_name[label])
 
     # plot_cluster(df, features=['valence', 'arousal'],
     #              label='label',
@@ -139,9 +139,9 @@ def get_data_loader(validation_split=0.2,
                                            splits=[validation_split, test_split],
                                            show_result=False)
 
-    print('Training data:', df_train.groupby(['label', 'class_name']).size())
-    print('Validation data:', df_val.groupby(['label', 'class_name']).size())
-    print('Test data:', df_test.groupby(['label', 'class_name']).size())
+    print('Training data:', len(df_train))
+    print('Validation data:', len(df_val))
+    print('Test data:', len(df_test))
 
     # Build vocab from training set for lyrics
     # vocab = torchtext.vocab.build_vocab_from_iterator([df_train.lyrics.str.cat().split(' ')],
@@ -189,4 +189,4 @@ def get_data_loader(validation_split=0.2,
                              shuffle=False,
                              collate_fn=lambda batch: pad_collate(batch, pad_value))
 
-    return train_loader, val_loader, test_loader, classes_name, _vocab, glove.vectors
+    return train_loader, val_loader, test_loader, _vocab, glove.vectors

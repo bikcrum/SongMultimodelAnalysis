@@ -122,7 +122,7 @@ class MultiNet(nn.Module):
 
         self.classifier = nn.Sequential(
             nn.Linear(in_features=num_features, out_features=128),
-            nn.Linear(in_features=128, out_features=4)
+            nn.Linear(in_features=128, out_features=2)
         )
 
     def forward(self, spec, lyric):
