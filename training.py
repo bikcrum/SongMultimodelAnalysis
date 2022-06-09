@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import sys
 import time
 from datetime import datetime
@@ -13,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from data_loader import get_data_loader
 from network import MultiNet
+from data_loader import create_cluster
 
 
 def main():
@@ -48,7 +50,7 @@ def main():
         'num_epochs': 1000,
     }
 
-    train_loader, val_loader, _, vocab, embeddings = get_data_loader(
+    train_loader, val_loader, _, classes_name, vocab, embeddings = get_data_loader(
         validation_split=hparams['validation_split'],
         test_split=hparams['test_split'],
         batch_size=hparams['batch_size'],
@@ -89,22 +91,26 @@ def main():
     # make directory to store models
     os.makedirs(os.path.join(dataset_dir, f'saved_models/{train_start_time}'), exist_ok=True)
 
+    with open(os.path.join(dataset_dir, "kmeans-model.pkl"), "rb") as f:
+        kmeans = pickle.load(f)
+
     # Main training loop
     for i in range(hparams['num_epochs']):
 
         # Run an epoch of training
         train_running_loss = 0
-        # train_running_acc = 0
+        train_running_acc = 0
         model.train()
-        for j, (spec, lyric, label) in enumerate(train_loader, 0):
-            spec, lyric, label = spec.to(device), lyric.to(device), label.to(device)
+        df = []
+        for j, (_id, label, spec, lyric, target) in enumerate(train_loader, 0):
+            spec, lyric, target = spec.to(device), lyric.to(device), target.to(device)
 
             out = model(spec, lyric)
             # out = model(input_ids=lyric['input_ids'].squeeze(1),
             #             attention_mask=lyric['attention_mask'],
             #             return_dict=False)[0]
 
-            loss = criterion(out, label)
+            loss = criterion(out, target)
 
             model.zero_grad()
             loss.backward()
@@ -119,25 +125,38 @@ def main():
 
             loss_log.append(loss.item())
             # acc_log.append(correct.item() / len(label))
+            df.append(pd.DataFrame({'dzr_sng_id': _id,
+                                    'valence': out[:, 0].cpu().detach().numpy(),
+                                    'arousal': out[:, 1].cpu().detach().numpy(),
+                                    'label': label}))
+
+        # Load kmeans cluster saved model (clustered using whole dataset)
+        df = pd.concat(df)
+        df['pred_label'] = kmeans.fit_predict(df[['valence', 'arousal']])
+        df['pred_label'] = df['pred_label'].astype(int)
+
+        correct = (df.pred_label == df.label).sum()
+        train_running_acc += correct
 
         train_running_loss /= j
-        # train_running_acc /= len(train_loader.dataset)
+        train_running_acc /= len(train_loader.dataset)
 
         # Evaluate on validation
-        # val_acc = 0
+        val_acc = 0
         val_loss = 0
-        # confusion_matrix = np.zeros((4, 4))
+        confusion_matrix = np.zeros((4, 4))
         model.eval()
+        pred_df = []
         for j, input in enumerate(val_loader, 0):
-            spec, lyric, label = input
-            spec, lyric, label = spec.to(device), lyric.to(device), label.to(device)
+            _id, label, spec, lyric, target = input
+            spec, lyric, target = spec.to(device), lyric.to(device), target.to(device)
 
             out = model(spec, lyric)
             # out = model(input_ids=lyric['input_ids'].squeeze(1),
             #             attention_mask=lyric['attention_mask'],
             #             return_dict=False)[0]
 
-            loss = criterion(out, label)
+            loss = criterion(out, target)
             # _, predicted = torch.max(out.data, 1)
             # correct = (predicted == label).sum()
 
@@ -146,20 +165,34 @@ def main():
 
             # for t, p in zip(label, predicted):
             #     confusion_matrix[t, p] += 1
+            pred_df.append(pd.DataFrame({'dzr_sng_id': _id,
+                                         'valence': out[:, 0].cpu().detach().numpy(),
+                                         'arousal': out[:, 1].cpu().detach().numpy(),
+                                         'label': label}))
 
-        # val_acc /= len(val_loader.dataset)
+        # Load kmeans cluster saved model (clustered using whole dataset)
+        pred_df = pd.concat(pred_df)
+        pred_df['pred_label'] = kmeans.fit_predict(pred_df[['valence', 'arousal']])
+        pred_df['pred_label'] = pred_df['pred_label'].astype(int)
+
+        for i, row in pred_df.iterrows():
+            confusion_matrix[int(row.label), int(row.pred_label)] += 1
+
+        correct = (pred_df.pred_label == pred_df.label).sum()
+        val_acc += correct
+        val_acc /= len(val_loader.dataset)
         val_loss /= j
 
-        # classes_name_only = list(zip(*sorted(classes_name.items(), key=lambda x: x[0])))[1]
-        # df_cm = pd.DataFrame(confusion_matrix, index=classes_name_only, columns=classes_name_only).astype(int)
-        # heatmap = sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
-        #
-        # heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=90, ha='right', fontsize=15)
-        # heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=0, ha='center', fontsize=15)
-        # plt.ylabel('True class')
-        # plt.xlabel('Predicted class')
-        #
-        # writer.add_figure("Confusion matrix", plt.gcf(), global_step=i)
+        classes_name_only = list(zip(*sorted(classes_name.items(), key=lambda x: x[0])))[1]
+        df_cm = pd.DataFrame(confusion_matrix, index=classes_name_only, columns=classes_name_only).astype(int)
+        heatmap = sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
+
+        heatmap.yaxis.set_ticklabels(heatmap.yaxis.get_ticklabels(), rotation=90, ha='right', fontsize=15)
+        heatmap.xaxis.set_ticklabels(heatmap.xaxis.get_ticklabels(), rotation=0, ha='center', fontsize=15)
+        plt.ylabel('True class')
+        plt.xlabel('Predicted class')
+
+        writer.add_figure("Confusion matrix", plt.gcf(), global_step=i)
 
         # Save models
         # if val_acc > max_acc_so_far:
@@ -176,12 +209,12 @@ def main():
         val_loss_log.append(val_loss)
 
         print(
-            str(time.time()) + " [Epoch {:3}]   Loss:  {:8.4}  Val Loss:  {:8.4}".format(
+            str(time.time()) + " [Epoch {:3}]   Loss:  {:8.4}  Val Loss:  {:8.4}   Accuracy:  {:8.4}  Val Acc:  {:8.4}".format(
                 i,
                 train_running_loss,
-                val_loss))
-        # train_running_acc * 100,
-        # val_acc * 100))
+                val_loss,
+                train_running_acc * 100,
+                val_acc * 100))
 
         # Write results to tensorboard
         # writer.add_scalar('Accuracy/train', train_running_acc * 100, i)
@@ -193,7 +226,7 @@ def main():
         #     writer.add_histogram(name, weight, i)
         #     writer.add_histogram(f'{name}.grad', weight.grad, i)
 
-    writer.close()
+        writer.close()
 
 
 if __name__ == '__main__':

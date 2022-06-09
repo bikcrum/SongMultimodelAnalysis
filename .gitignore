@@ -4,6 +4,7 @@ venv
 .ipynb_checkpoints
 dataset/*
 !dataset/*.csv
+!dataset/kmeans-model.pkl
 runs*
 saved_models
 tf-checkpoints

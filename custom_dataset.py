@@ -47,6 +47,7 @@ class AudioDataset(Dataset):
         if self.transform:
             spec = self.transform(spec)
 
+        label = self.df.iloc[idx]['label']
         target = self.df.iloc[idx][['valence', 'arousal']].astype(np.float32)
 
-        return spec, lyric, target
+        return self.df.iloc[idx].dzr_sng_id, label, spec, lyric, target

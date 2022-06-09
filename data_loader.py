@@ -9,17 +9,24 @@ from sklearn.utils import shuffle
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from torchtext.vocab import GloVe, vocab
-
+import pickle
 from custom_dataset import AudioDataset
 
 
-def create_cluster(dataset, num_clusters, features):
+def create_cluster(dataset_dir, dataset, num_clusters, features):
     _dataset = dataset.copy()
     x = _dataset.loc[:, features]
+    #
+    # kmeans = KMeans(num_clusters, n_init=10,  random_state=10)
+    # kmeans.fit(_dataset[features])
 
-    kmeans = KMeans(num_clusters)
-    kmeans.fit(_dataset[features])
+    with open(os.path.join(dataset_dir, "kmeans-model.pkl"), "rb") as f:
+        kmeans = pickle.load(f)
+
     clusters = kmeans.fit_predict(x)
+
+    # with open(os.path.join(dataset_dir, "kmeans-model.pkl"), "wb") as f:
+    #     pickle.dump(kmeans, f)
 
     return clusters
 
@@ -86,13 +93,13 @@ def split_data(dataset, shuffle=False, splits=None, show_result=False):
 
 
 def pad_collate(batch, pad_value):
-    (specs, lyrics, labels) = zip(*batch)
+    (_id, labels, specs, lyrics, targets) = zip(*batch)
 
     padded_lyrics = pad_sequence(lyrics, padding_value=pad_value)
 
-    specs, padded_lyrics, labels = torch.stack(specs), padded_lyrics.T, torch.tensor(labels)
+    specs, padded_lyrics, targets = torch.stack(specs), padded_lyrics.T, torch.tensor(targets)
 
-    return specs, padded_lyrics, labels
+    return _id, labels, specs, padded_lyrics, targets
 
 
 def get_data_loader(validation_split=0.2,
@@ -109,7 +116,7 @@ def get_data_loader(validation_split=0.2,
     df = df.merge(df_lyrics, on='dzr_sng_id')
 
     # Clustering (Warning: Class order might change with re-clustering)
-    # df['label'] = create_cluster(df, 4, ['valence', 'arousal'])
+    # df['label'] = create_cluster(dataset_dir, df, 4, ['valence', 'arousal'])
     # dataset.to_csv(os.path.join(dataset_dir, 'dataset.csv'), index=None)
 
     # Balance data
@@ -119,13 +126,13 @@ def get_data_loader(validation_split=0.2,
     #     balanced_df.append(group[:min_data_size])
     # df = pd.concat(balanced_df)
 
-    # classes_name = {0: 'HV-LA',
-    #                 1: 'HV-HA',
-    #                 2: 'LV-LA',
-    #                 3: 'LV-HA'}
+    classes_name = {0: 'HV-LA',
+                    1: 'HV-HA',
+                    2: 'LV-LA',
+                    3: 'LV-HA'}
     #
-    # df['class_name'] = df.label.apply(lambda label: classes_name[label])
-
+    df['class_name'] = df.label.apply(lambda label: classes_name[label])
+    #
     # plot_cluster(df, features=['valence', 'arousal'],
     #              label='label',
     #              class_name='class_name')
@@ -189,4 +196,4 @@ def get_data_loader(validation_split=0.2,
                              shuffle=False,
                              collate_fn=lambda batch: pad_collate(batch, pad_value))
 
-    return train_loader, val_loader, test_loader, _vocab, glove.vectors
+    return train_loader, val_loader, test_loader, classes_name, _vocab, glove.vectors
