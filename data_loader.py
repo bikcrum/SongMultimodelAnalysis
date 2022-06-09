@@ -149,7 +149,7 @@ def get_data_loader(validation_split=0.2,
     # vocab.set_default_index(vocab['<unk>'])
     # pad_value = vocab["<pad>"]
 
-    glove = GloVe(name="6B", dim=200, max_vectors=10000)
+    glove = GloVe(name="6B", dim=300, max_vectors=50000)
 
     _vocab = vocab(glove.stoi)
     _vocab.insert_token('<unk>', 0)

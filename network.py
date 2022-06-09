@@ -59,7 +59,7 @@ class InputEmbedding(nn.Module):
         super(InputEmbedding, self).__init__()
 
         if embeddings is not None:
-            self.embedding = nn.Embedding.from_pretrained(embeddings, freeze=False)
+            self.embedding = nn.Embedding.from_pretrained(embeddings, freeze=True)
 
         self.embedding = nn.Embedding(vocab_size, d_model)
 
