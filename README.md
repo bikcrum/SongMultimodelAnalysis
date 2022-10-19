@@ -1,5 +1,8 @@
 ### SongMultimodelAnalysis - Deep learning project (AI-535)
 
+### Project paper
+https://github.com/bikcrum/SongMultimodelAnalysis/blob/master/Report.pdf
+
 ## Get started
 
 1. Download scripts from here https://drive.google.com/drive/folders/1G7fdJRXJj9w0n6hogd01xn2Wrj6mgqAd?usp=sharing
